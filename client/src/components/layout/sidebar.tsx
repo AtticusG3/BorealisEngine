@@ -24,76 +24,56 @@ export function Sidebar({ selectedTenant, onTenantChange }: SidebarProps) {
       
       {/* Navigation Menu */}
       <nav className="flex-1 p-4 space-y-2">
-        <Link href="/">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-foreground bg-secondary rounded-md" data-testid="link-dashboard">
-            <Gauge className="mr-3 w-5 h-5" />
-            Dashboard
-          </a>
+        <Link href="/" className="flex items-center px-3 py-2 text-sm font-medium text-foreground bg-secondary rounded-md" data-testid="link-dashboard">
+          <Gauge className="mr-3 w-5 h-5" />
+          Dashboard
         </Link>
         
-        <Link href="/wells">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-wells">
-            <Droplets className="mr-3 w-5 h-5" />
-            Wells
-          </a>
+        <Link href="/wells" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-wells">
+          <Droplets className="mr-3 w-5 h-5" />
+          Wells
         </Link>
         
-        <Link href="/rigs">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-rigs">
-            <Building2 className="mr-3 w-5 h-5" />
-            Rigs
-          </a>
+        <Link href="/rigs" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-rigs">
+          <Building2 className="mr-3 w-5 h-5" />
+          Rigs
         </Link>
         
-        <Link href="/survey">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-survey">
-            <Route className="mr-3 w-5 h-5" />
-            Survey Engine
-          </a>
+        <Link href="/survey" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-survey">
+          <Route className="mr-3 w-5 h-5" />
+          Survey Engine
         </Link>
         
-        <Link href="/bha">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-bha">
-            <Wrench className="mr-3 w-5 h-5" />
-            BHA Manager
-          </a>
+        <Link href="/bha" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-bha">
+          <Wrench className="mr-3 w-5 h-5" />
+          BHA Manager
         </Link>
         
-        <Link href="/traces">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-traces">
-            <TrendingUp className="mr-3 w-5 h-5" />
-            Traces
-          </a>
+        <Link href="/traces" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-traces">
+          <TrendingUp className="mr-3 w-5 h-5" />
+          Traces
         </Link>
         
-        <Link href="/alarms">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-alarms">
-            <Bell className="mr-3 w-5 h-5" />
-            Smart Alarms
-          </a>
+        <Link href="/alarms" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-alarms">
+          <Bell className="mr-3 w-5 h-5" />
+          Smart Alarms
         </Link>
         
-        <Link href="/reports">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-reports">
-            <FileText className="mr-3 w-5 h-5" />
-            Reports
-          </a>
+        <Link href="/reports" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-reports">
+          <FileText className="mr-3 w-5 h-5" />
+          Reports
         </Link>
         
-        <Link href="/sync">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-sync">
-            <RefreshCw className="mr-3 w-5 h-5" />
-            Cloud Sync
-          </a>
+        <Link href="/sync" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-sync">
+          <RefreshCw className="mr-3 w-5 h-5" />
+          Cloud Sync
         </Link>
         
         <hr className="my-4 border-border" />
         
-        <Link href="/">
-          <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-settings">
-            <Settings className="mr-3 w-5 h-5" />
-            Settings
-          </a>
+        <Link href="/" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-settings">
+          <Settings className="mr-3 w-5 h-5" />
+          Settings
         </Link>
       </nav>
       
