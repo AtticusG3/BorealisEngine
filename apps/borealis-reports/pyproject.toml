@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "borealis-reports"
+version = "0.1.0"
+description = "Borealis Reports Service - Template-based report generation with Jinja2"
+authors = ["Borealis Team"]
+readme = "README.md"
+packages = [{include = "borealis_reports"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115"
+uvicorn = "^0.30"
+jinja2 = "^3.1"
+pydantic = "^2"
+pydantic-settings = "^2.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
