@@ -9,23 +9,23 @@ const { Pool } = pg;
 
 export interface IStorage {
   // User operations
-  getUser(id: string, tenant?: string): Promise<User | undefined>;
-  getUserByUsername(username: string, tenant?: string): Promise<User | undefined>;
+  getUser(id: string, tenant: string): Promise<User | undefined>;
+  getUserByUsername(username: string, tenant: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
   // Rig operations
-  getRigs(tenant?: string): Promise<Rig[]>;
+  getRigs(tenant: string): Promise<Rig[]>;
   getRig(id: string, tenant: string): Promise<Rig | undefined>;
   createRig(rig: InsertRig): Promise<Rig>;
 
   // Well operations
-  getWells(tenant?: string): Promise<Well[]>;
+  getWells(tenant: string): Promise<Well[]>;
   getWell(id: string, tenant: string): Promise<Well | undefined>;
   createWell(well: InsertWell): Promise<Well>;
 
   // System settings operations
-  getSettings(keys?: string[], tenant?: string): Promise<SystemSetting[]>;
-  getSetting(key: string, tenant?: string): Promise<SystemSetting | undefined>;
+  getSettings(tenant: string, keys?: string[]): Promise<SystemSetting[]>;
+  getSetting(key: string, tenant: string): Promise<SystemSetting | undefined>;
   createSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
 }
 
@@ -49,25 +49,17 @@ export class PostgresStorage implements IStorage {
     this.db = drizzle(pool);
   }
 
-  async getUser(id: string, tenant?: string): Promise<User | undefined> {
-    if (tenant) {
-      const result = await this.db.select().from(users)
-        .where(and(eq(users.id, id), eq(users.tenant, tenant)))
-        .limit(1);
-      return result[0];
-    }
-    const result = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+  async getUser(id: string, tenant: string): Promise<User | undefined> {
+    const result = await this.db.select().from(users)
+      .where(and(eq(users.id, id), eq(users.tenant, tenant)))
+      .limit(1);
     return result[0];
   }
 
-  async getUserByUsername(username: string, tenant?: string): Promise<User | undefined> {
-    if (tenant) {
-      const result = await this.db.select().from(users)
-        .where(and(eq(users.username, username), eq(users.tenant, tenant)))
-        .limit(1);
-      return result[0];
-    }
-    const result = await this.db.select().from(users).where(eq(users.username, username)).limit(1);
+  async getUserByUsername(username: string, tenant: string): Promise<User | undefined> {
+    const result = await this.db.select().from(users)
+      .where(and(eq(users.username, username), eq(users.tenant, tenant)))
+      .limit(1);
     return result[0];
   }
 
@@ -83,11 +75,8 @@ export class PostgresStorage implements IStorage {
     return result[0];
   }
 
-  async getRigs(tenant?: string): Promise<Rig[]> {
-    if (tenant) {
-      return await this.db.select().from(rigs).where(eq(rigs.tenant, tenant));
-    }
-    return await this.db.select().from(rigs);
+  async getRigs(tenant: string): Promise<Rig[]> {
+    return await this.db.select().from(rigs).where(eq(rigs.tenant, tenant));
   }
 
   async getRig(id: string, tenant: string): Promise<Rig | undefined> {
@@ -102,11 +91,8 @@ export class PostgresStorage implements IStorage {
     return result[0];
   }
 
-  async getWells(tenant?: string): Promise<Well[]> {
-    if (tenant) {
-      return await this.db.select().from(wells).where(eq(wells.tenant, tenant));
-    }
-    return await this.db.select().from(wells);
+  async getWells(tenant: string): Promise<Well[]> {
+    return await this.db.select().from(wells).where(eq(wells.tenant, tenant));
   }
 
   async getWell(id: string, tenant: string): Promise<Well | undefined> {
@@ -121,27 +107,21 @@ export class PostgresStorage implements IStorage {
     return result[0];
   }
 
-  async getSettings(keys?: string[], tenant?: string): Promise<SystemSetting[]> {
-    if (tenant && keys && keys.length > 0) {
+  async getSettings(tenant: string, keys?: string[]): Promise<SystemSetting[]> {
+    if (keys && keys.length > 0) {
       return await this.db.select().from(systemSettings)
         .where(and(eq(systemSettings.tenant, tenant), inArray(systemSettings.key, keys)));
-    } else if (tenant) {
+    } else {
       return await this.db.select().from(systemSettings)
         .where(eq(systemSettings.tenant, tenant));
-    } else if (keys && keys.length > 0) {
-      return await this.db.select().from(systemSettings)
-        .where(inArray(systemSettings.key, keys));
-    } else {
-      return await this.db.select().from(systemSettings);
     }
   }
 
-  async getSetting(key: string, tenant?: string): Promise<SystemSetting | undefined> {
-    const tenantValue = tenant || "public";
+  async getSetting(key: string, tenant: string): Promise<SystemSetting | undefined> {
     const result = await this.db.select().from(systemSettings)
       .where(and(
         eq(systemSettings.key, key),
-        eq(systemSettings.tenant, tenantValue)
+        eq(systemSettings.tenant, tenant)
       ))
       .limit(1);
     return result[0];
@@ -178,7 +158,7 @@ export class MemStorage implements IStorage {
       tenant: "public",
       createdAt: new Date(),
     };
-    this.rigs.set(defaultRig.id, defaultRig);
+    this.rigs.set(`${defaultRig.tenant}:${defaultRig.id}`, defaultRig);
 
     // Default well
     const defaultWell: Well = {
@@ -190,7 +170,7 @@ export class MemStorage implements IStorage {
       tenant: "public",
       createdAt: new Date(),
     };
-    this.wells.set(defaultWell.id, defaultWell);
+    this.wells.set(`${defaultWell.tenant}:${defaultWell.id}`, defaultWell);
 
     // Default settings
     const defaultSettings: SystemSetting[] = [
@@ -209,21 +189,18 @@ export class MemStorage implements IStorage {
     ];
 
     defaultSettings.forEach(setting => {
-      this.settings.set(`${setting.key}:${setting.tenant}`, setting);
+      this.settings.set(`${setting.tenant}:${setting.key}:${setting.id}`, setting);
     });
   }
 
-  async getUser(id: string, tenant?: string): Promise<User | undefined> {
-    const user = this.users.get(id);
-    if (tenant && user && user.tenant !== tenant) {
-      return undefined;
-    }
-    return user;
+  async getUser(id: string, tenant: string): Promise<User | undefined> {
+    const compositeKey = `${tenant}:${id}`;
+    return this.users.get(compositeKey);
   }
 
-  async getUserByUsername(username: string, tenant?: string): Promise<User | undefined> {
+  async getUserByUsername(username: string, tenant: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username && (!tenant || user.tenant === tenant),
+      (user) => user.username === username && user.tenant === tenant,
     );
   }
 
@@ -235,21 +212,18 @@ export class MemStorage implements IStorage {
       roles: insertUser.roles || ["BRLS_Viewer"],
       tenant: insertUser.tenant || "public"
     };
-    this.users.set(id, user);
+    const compositeKey = `${user.tenant}:${user.id}`;
+    this.users.set(compositeKey, user);
     return user;
   }
 
-  async getRigs(tenant?: string): Promise<Rig[]> {
-    const allRigs = Array.from(this.rigs.values());
-    return tenant ? allRigs.filter(rig => rig.tenant === tenant) : allRigs;
+  async getRigs(tenant: string): Promise<Rig[]> {
+    return Array.from(this.rigs.values()).filter(rig => rig.tenant === tenant);
   }
 
   async getRig(id: string, tenant: string): Promise<Rig | undefined> {
-    const rig = this.rigs.get(id);
-    if (rig && rig.tenant === tenant) {
-      return rig;
-    }
-    return undefined;
+    const compositeKey = `${tenant}:${id}`;
+    return this.rigs.get(compositeKey);
   }
 
   async createRig(insertRig: InsertRig): Promise<Rig> {
@@ -261,21 +235,18 @@ export class MemStorage implements IStorage {
       tenant: insertRig.tenant || "public",
       createdAt: new Date(),
     };
-    this.rigs.set(id, rig);
+    const compositeKey = `${rig.tenant}:${rig.id}`;
+    this.rigs.set(compositeKey, rig);
     return rig;
   }
 
-  async getWells(tenant?: string): Promise<Well[]> {
-    const allWells = Array.from(this.wells.values());
-    return tenant ? allWells.filter(well => well.tenant === tenant) : allWells;
+  async getWells(tenant: string): Promise<Well[]> {
+    return Array.from(this.wells.values()).filter(well => well.tenant === tenant);
   }
 
   async getWell(id: string, tenant: string): Promise<Well | undefined> {
-    const well = this.wells.get(id);
-    if (well && well.tenant === tenant) {
-      return well;
-    }
-    return undefined;
+    const compositeKey = `${tenant}:${id}`;
+    return this.wells.get(compositeKey);
   }
 
   async createWell(insertWell: InsertWell): Promise<Well> {
@@ -289,13 +260,14 @@ export class MemStorage implements IStorage {
       rigId: insertWell.rigId ?? null,
       createdAt: new Date(),
     };
-    this.wells.set(id, well);
+    const compositeKey = `${well.tenant}:${well.id}`;
+    this.wells.set(compositeKey, well);
     return well;
   }
 
-  async getSettings(keys?: string[], tenant?: string): Promise<SystemSetting[]> {
+  async getSettings(tenant: string, keys?: string[]): Promise<SystemSetting[]> {
     const allSettings = Array.from(this.settings.values());
-    let filtered = tenant ? allSettings.filter(setting => setting.tenant === tenant) : allSettings;
+    let filtered = allSettings.filter(setting => setting.tenant === tenant);
     
     if (keys && keys.length > 0) {
       filtered = filtered.filter(setting => keys.includes(setting.key));
@@ -304,9 +276,11 @@ export class MemStorage implements IStorage {
     return filtered;
   }
 
-  async getSetting(key: string, tenant?: string): Promise<SystemSetting | undefined> {
-    const searchKey = `${key}:${tenant || "public"}`;
-    return this.settings.get(searchKey);
+  async getSetting(key: string, tenant: string): Promise<SystemSetting | undefined> {
+    // Search through settings for this tenant and key
+    return Array.from(this.settings.values()).find(
+      setting => setting.key === key && setting.tenant === tenant
+    );
   }
 
   async createSetting(insertSetting: InsertSystemSetting): Promise<SystemSetting> {
@@ -316,8 +290,8 @@ export class MemStorage implements IStorage {
       id,
       tenant: insertSetting.tenant || "public",
     };
-    const key = `${setting.key}:${setting.tenant}`;
-    this.settings.set(key, setting);
+    const compositeKey = `${setting.tenant}:${setting.key}:${setting.id}`;
+    this.settings.set(compositeKey, setting);
     return setting;
   }
 }
