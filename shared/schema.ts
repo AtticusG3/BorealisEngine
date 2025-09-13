@@ -5,12 +5,15 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().$defaultFn(() => randomUUID()),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(), // TODO: Hash passwords before production
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull(),
+  password: text("password").notNull(), // Will store hashed passwords
   roles: text("roles").array().default(sql`ARRAY['BRLS_Viewer']`),
   tenant: text("tenant").notNull().default("public"),
-});
+}, (table) => ({
+  // Composite unique constraint for multi-tenancy
+  tenantUsernameUnique: unique().on(table.tenant, table.username),
+}));
 
 export const rigs = pgTable("rigs", {
   id: varchar("id").primaryKey(),
@@ -18,7 +21,10 @@ export const rigs = pgTable("rigs", {
   status: text("status").notNull().default("active"),
   tenant: text("tenant").notNull().default("public"),
   createdAt: timestamp("created_at").default(sql`now()`),
-});
+}, (table) => ({
+  // Composite unique constraint for multi-tenancy
+  tenantIdUnique: unique().on(table.tenant, table.id),
+}));
 
 export const wells = pgTable("wells", {
   id: varchar("id").primaryKey(),
@@ -28,7 +34,10 @@ export const wells = pgTable("wells", {
   rigId: varchar("rig_id").references(() => rigs.id),
   tenant: text("tenant").notNull().default("public"),
   createdAt: timestamp("created_at").default(sql`now()`),
-});
+}, (table) => ({
+  // Composite unique constraint for multi-tenancy
+  tenantIdUnique: unique().on(table.tenant, table.id),
+}));
 
 export const systemSettings = pgTable("system_settings", {
   id: varchar("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -46,6 +55,9 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
   roles: true,
   tenant: true,
+}).extend({
+  // Accept raw password for server-side hashing (minimum 8 chars)
+  password: z.string().min(8),
 });
 
 export const insertRigSchema = createInsertSchema(rigs).pick({

@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, inArray } from "drizzle-orm";
 import pg from "pg";
 import { randomUUID } from "crypto";
+import * as argon2 from "argon2";
 
 const { Pool } = pg;
 
@@ -59,7 +60,14 @@ export class PostgresStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const result = await this.db.insert(users).values(insertUser).returning();
+    // Hash the password before storing
+    const hashedPassword = await argon2.hash(insertUser.password);
+    const userWithHashedPassword = {
+      ...insertUser,
+      password: hashedPassword
+    };
+    
+    const result = await this.db.insert(users).values(userWithHashedPassword).returning();
     return result[0];
   }
 
