@@ -19,6 +19,12 @@ import {
   insertAttachmentSchema,
   insertSystemSettingSchema
 } from "@shared/schema";
+import { 
+  calculateMagneticDeclination, 
+  getDeclinationFromLookup, 
+  validateDeclinationRequest,
+  type DeclinationRequest 
+} from "@shared/declination";
 
 // Extend Express Request type to include tenant
 declare global {
@@ -179,7 +185,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/wells", requireTenant, async (req, res) => {
     try {
       const data = insertWellSchema.parse(req.body);
+      
+      // Create the well first
       const well = await storage.createWell({ ...data, tenant: req.tenant });
+
+      // Bootstrap logic: Auto-create SurveySettings with declination computation
+      if (well.surfaceLatitude != null && well.surfaceLongitude != null) {
+        try {
+          // Prepare declination request
+          const declinationRequest: DeclinationRequest = {
+            latitude: well.surfaceLatitude,
+            longitude: well.surfaceLongitude,
+            date: new Date(), // Use current date for declination calculation
+            elevation: well.surfaceElevation || 0
+          };
+
+          // Validate declination request
+          const validation = validateDeclinationRequest(declinationRequest);
+          if (!validation.isValid) {
+            console.warn(`Declination validation failed for well ${well.id}:`, validation.errors);
+          }
+
+          // Try lookup table first for common drilling regions (faster)
+          let declinationResult = getDeclinationFromLookup(
+            well.surfaceLatitude,
+            well.surfaceLongitude,
+            new Date()
+          );
+          let isLookupResult = declinationResult !== null;
+
+          // If no lookup result, use full calculation
+          if (!declinationResult) {
+            declinationResult = calculateMagneticDeclination(declinationRequest);
+          }
+
+          // Create default survey settings with computed declination
+          const surveySettingsData = {
+            wellId: well.id,
+            mwdToolFamily: "Tensor", // Default tool family
+            declination: declinationResult.declination,
+            gridConvergence: 0, // Default, should be computed from CRS if available
+            totalCorrection: declinationResult.declination, // Declination only for now
+            declinationSource: isLookupResult ? 'LOOKUP' as const : 'CALCULATED' as const,
+            declinationDate: declinationResult.calculationDate,
+            magneticModel: declinationResult.model
+          };
+
+          // Validate survey settings before storage (align with other routes pattern)
+          const validatedData = insertSurveySettingsSchema.parse(surveySettingsData);
+
+          // Create the survey settings with tenant added after validation
+          await storage.createSurveySettings({ ...validatedData, tenant: req.tenant }, req.tenant);
+
+          console.log(`Auto-created survey settings for well ${well.id} with declination: ${declinationResult.declination.toFixed(2)}° (${declinationResult.source})`);
+          
+          // Log any warnings
+          if (validation.warnings.length > 0) {
+            console.warn(`Declination warnings for well ${well.id}:`, validation.warnings);
+          }
+        } catch (declinationError) {
+          console.error(`Failed to auto-create survey settings for well ${well.id}:`, declinationError);
+          // Don't fail the well creation if survey settings creation fails
+        }
+      } else {
+        console.warn(`Well ${well.id} created without surface coordinates - skipping auto survey settings creation`);
+      }
+
       res.status(201).json(well);
     } catch (error) {
       if (error instanceof z.ZodError) {
