@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { randomUUID } from "crypto";
 
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => randomUUID()),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull(), // TODO: Hash passwords before production
   roles: text("roles").array().default(sql`ARRAY['BRLS_Viewer']`),
   tenant: text("tenant").notNull().default("public"),
 });
@@ -30,11 +31,14 @@ export const wells = pgTable("wells", {
 });
 
 export const systemSettings = pgTable("system_settings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  key: text("key").notNull().unique(),
+  id: varchar("id").primaryKey().$defaultFn(() => randomUUID()),
+  key: text("key").notNull(),
   value: text("value").notNull(),
   tenant: text("tenant").notNull().default("public"),
-});
+}, (table) => ({
+  // Composite unique constraint for multi-tenancy
+  tenantKeyUnique: unique().on(table.tenant, table.key),
+}));
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({

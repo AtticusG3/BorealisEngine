@@ -89,7 +89,7 @@ export function Sidebar({ selectedTenant, onTenantChange }: SidebarProps) {
         
         <hr className="my-4 border-border" />
         
-        <Link href="/settings">
+        <Link href="/">
           <a className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-settings">
             <Settings className="mr-3 w-5 h-5" />
             Settings
