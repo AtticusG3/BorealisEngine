@@ -1,6 +1,9 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { spawn } from "child_process";
+import path from "path";
+import { fileURLToPath } from 'url';
 
 const app = express();
 app.use(express.json());
@@ -36,8 +39,191 @@ app.use((req, res, next) => {
   next();
 });
 
+// Python services management
+let surveyProcess: any = null;
+let reportsProcess: any = null;
+
+const installPythonDependencies = async (appDir: string, appName: string) => {
+  return new Promise<void>((resolve, reject) => {
+    log(`Installing dependencies for ${appName}...`);
+    const installProcess = spawn('pip', ['install', '--user', '-e', '.'], {
+      cwd: appDir,
+      env: { ...process.env }
+    });
+
+    installProcess.stdout.on('data', (data: Buffer) => {
+      log(`[${appName} Install] ${data.toString().trim()}`);
+    });
+
+    installProcess.stderr.on('data', (data: Buffer) => {
+      log(`[${appName} Install Error] ${data.toString().trim()}`);
+    });
+
+    installProcess.on('close', (code) => {
+      if (code === 0) {
+        log(`${appName} dependencies installed successfully`);
+        resolve();
+      } else {
+        log(`Failed to install ${appName} dependencies (exit code: ${code})`);
+        reject(new Error(`Dependency installation failed for ${appName}`));
+      }
+    });
+  });
+};
+
+const startPythonServices = async () => {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const rootDir = path.resolve(__dirname, '..');
+  
+  try {
+    const surveyDir = path.join(rootDir, 'apps/borealis-survey');
+    const reportsDir = path.join(rootDir, 'apps/borealis-reports');
+
+    // Install dependencies for both apps
+    await installPythonDependencies(surveyDir, 'Survey');
+    await installPythonDependencies(reportsDir, 'Reports');
+
+    // Start Survey Service
+    log('Starting Survey Service on port 8010...');
+    surveyProcess = spawn('python', [
+      '-m', 'uvicorn',
+      'borealis_survey.main:app',
+      '--host', '127.0.0.1',
+      '--port', '8010'
+    ], {
+      env: { 
+        ...process.env, 
+        PYTHONPATH: surveyDir
+      },
+      cwd: surveyDir
+    });
+
+    surveyProcess.stdout.on('data', (data: Buffer) => {
+      log(`[Survey] ${data.toString().trim()}`);
+    });
+    
+    surveyProcess.stderr.on('data', (data: Buffer) => {
+      log(`[Survey ERROR] ${data.toString().trim()}`);
+    });
+
+    surveyProcess.on('error', (error) => {
+      log(`[Survey Process Error] ${error.message}`);
+    });
+
+    surveyProcess.on('exit', (code, signal) => {
+      log(`[Survey] Process exited with code ${code} and signal ${signal}`);
+    });
+
+    // Start Reports Service  
+    log('Starting Reports Service on port 8020...');
+    reportsProcess = spawn('python', [
+      '-m', 'uvicorn', 
+      'borealis_reports.main:app',
+      '--host', '127.0.0.1', 
+      '--port', '8020'
+    ], {
+      env: {
+        ...process.env,
+        PYTHONPATH: reportsDir
+      },
+      cwd: reportsDir
+    });
+
+    reportsProcess.stdout.on('data', (data: Buffer) => {
+      log(`[Reports] ${data.toString().trim()}`);
+    });
+    
+    reportsProcess.stderr.on('data', (data: Buffer) => {
+      log(`[Reports ERROR] ${data.toString().trim()}`);
+    });
+
+    reportsProcess.on('error', (error) => {
+      log(`[Reports Process Error] ${error.message}`);
+    });
+
+    reportsProcess.on('exit', (code, signal) => {
+      log(`[Reports] Process exited with code ${code} and signal ${signal}`);
+    });
+
+    // Wait for services to start and check health
+    log('Waiting for Python services to start...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Simple health check
+    try {
+      const surveyHealthCheck = await fetch('http://127.0.0.1:8010/health');
+      const reportsHealthCheck = await fetch('http://127.0.0.1:8020/health');
+      
+      if (surveyHealthCheck.ok && reportsHealthCheck.ok) {
+        log('Python services started and health checks passed');
+      } else {
+        log('Python services started but health checks failed');
+      }
+    } catch (error) {
+      log('Python services started but health checks could not connect');
+    }
+    
+  } catch (error) {
+    log(`Error starting Python services: ${error}`);
+  }
+};
+
+// Proxy routes for Python services
+const addProxyRoutes = (app: express.Application) => {
+  // Survey service proxy routes
+  app.all('/api/survey*', async (req, res) => {
+    try {
+      const targetPath = req.path.replace('/api/survey', '');
+      const url = `http://127.0.0.1:8010${targetPath}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+      
+      const response = await fetch(url, {
+        method: req.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...req.headers
+        },
+        body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
+      });
+
+      const data = await response.text();
+      res.status(response.status).set(Object.fromEntries(response.headers.entries())).send(data);
+    } catch (error) {
+      res.status(503).json({ error: 'Survey service unavailable' });
+    }
+  });
+
+  // Reports service proxy routes  
+  app.all('/api/reports*', async (req, res) => {
+    try {
+      const targetPath = req.path.replace('/api/reports', '');
+      const url = `http://127.0.0.1:8020${targetPath}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+      
+      const response = await fetch(url, {
+        method: req.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...req.headers
+        },
+        body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
+      });
+
+      const data = await response.text();
+      res.status(response.status).set(Object.fromEntries(response.headers.entries())).send(data);
+    } catch (error) {
+      res.status(503).json({ error: 'Reports service unavailable' });
+    }
+  });
+};
+
 (async () => {
   const server = await registerRoutes(app);
+  
+  // Add proxy routes
+  addProxyRoutes(app);
+  
+  // Start Python services
+  await startPythonServices();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

@@ -1,6 +1,7 @@
 """Jinja2 template rendering engine"""
 
-from jinja2 import SandboxedEnvironment, BaseLoader, StrictUndefined
+from jinja2 import Environment, BaseLoader, StrictUndefined, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 from typing import Dict, Any
 
 

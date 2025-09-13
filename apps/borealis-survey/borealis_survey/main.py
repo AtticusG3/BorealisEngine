@@ -74,6 +74,7 @@ class VerificationResult(BaseModel):
 
 
 @app.get("/")
+@app.get("/health")
 async def root():
     """Health check endpoint"""
     return {
