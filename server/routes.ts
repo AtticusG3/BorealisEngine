@@ -50,7 +50,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/rigs/:id", async (req, res) => {
     try {
-      const rig = await storage.getRig(req.params.id);
+      const tenant = req.headers["x-tenant-id"] as string || "public";
+      const rig = await storage.getRig(req.params.id, tenant);
       if (!rig) {
         return res.status(404).json({ error: "Rig not found" });
       }
@@ -73,7 +74,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/wells/:id", async (req, res) => {
     try {
-      const well = await storage.getWell(req.params.id);
+      const tenant = req.headers["x-tenant-id"] as string || "public";
+      const well = await storage.getWell(req.params.id, tenant);
       if (!well) {
         return res.status(404).json({ error: "Well not found" });
       }

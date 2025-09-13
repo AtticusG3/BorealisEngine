@@ -9,18 +9,18 @@ const { Pool } = pg;
 
 export interface IStorage {
   // User operations
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUser(id: string, tenant?: string): Promise<User | undefined>;
+  getUserByUsername(username: string, tenant?: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
   // Rig operations
   getRigs(tenant?: string): Promise<Rig[]>;
-  getRig(id: string): Promise<Rig | undefined>;
+  getRig(id: string, tenant: string): Promise<Rig | undefined>;
   createRig(rig: InsertRig): Promise<Rig>;
 
   // Well operations
   getWells(tenant?: string): Promise<Well[]>;
-  getWell(id: string): Promise<Well | undefined>;
+  getWell(id: string, tenant: string): Promise<Well | undefined>;
   createWell(well: InsertWell): Promise<Well>;
 
   // System settings operations
@@ -49,12 +49,24 @@ export class PostgresStorage implements IStorage {
     this.db = drizzle(pool);
   }
 
-  async getUser(id: string): Promise<User | undefined> {
+  async getUser(id: string, tenant?: string): Promise<User | undefined> {
+    if (tenant) {
+      const result = await this.db.select().from(users)
+        .where(and(eq(users.id, id), eq(users.tenant, tenant)))
+        .limit(1);
+      return result[0];
+    }
     const result = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
     return result[0];
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByUsername(username: string, tenant?: string): Promise<User | undefined> {
+    if (tenant) {
+      const result = await this.db.select().from(users)
+        .where(and(eq(users.username, username), eq(users.tenant, tenant)))
+        .limit(1);
+      return result[0];
+    }
     const result = await this.db.select().from(users).where(eq(users.username, username)).limit(1);
     return result[0];
   }
@@ -78,8 +90,10 @@ export class PostgresStorage implements IStorage {
     return await this.db.select().from(rigs);
   }
 
-  async getRig(id: string): Promise<Rig | undefined> {
-    const result = await this.db.select().from(rigs).where(eq(rigs.id, id)).limit(1);
+  async getRig(id: string, tenant: string): Promise<Rig | undefined> {
+    const result = await this.db.select().from(rigs)
+      .where(and(eq(rigs.id, id), eq(rigs.tenant, tenant)))
+      .limit(1);
     return result[0];
   }
 
@@ -95,8 +109,10 @@ export class PostgresStorage implements IStorage {
     return await this.db.select().from(wells);
   }
 
-  async getWell(id: string): Promise<Well | undefined> {
-    const result = await this.db.select().from(wells).where(eq(wells.id, id)).limit(1);
+  async getWell(id: string, tenant: string): Promise<Well | undefined> {
+    const result = await this.db.select().from(wells)
+      .where(and(eq(wells.id, id), eq(wells.tenant, tenant)))
+      .limit(1);
     return result[0];
   }
 
@@ -197,13 +213,17 @@ export class MemStorage implements IStorage {
     });
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getUser(id: string, tenant?: string): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (tenant && user && user.tenant !== tenant) {
+      return undefined;
+    }
+    return user;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByUsername(username: string, tenant?: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.username === username && (!tenant || user.tenant === tenant),
     );
   }
 
@@ -224,18 +244,24 @@ export class MemStorage implements IStorage {
     return tenant ? allRigs.filter(rig => rig.tenant === tenant) : allRigs;
   }
 
-  async getRig(id: string): Promise<Rig | undefined> {
-    return this.rigs.get(id);
+  async getRig(id: string, tenant: string): Promise<Rig | undefined> {
+    const rig = this.rigs.get(id);
+    if (rig && rig.tenant === tenant) {
+      return rig;
+    }
+    return undefined;
   }
 
   async createRig(insertRig: InsertRig): Promise<Rig> {
+    const id = insertRig.id || randomUUID();
     const rig: Rig = {
       ...insertRig,
+      id,
       status: insertRig.status || "active",
       tenant: insertRig.tenant || "public",
       createdAt: new Date(),
     };
-    this.rigs.set(rig.id, rig);
+    this.rigs.set(id, rig);
     return rig;
   }
 
@@ -244,20 +270,26 @@ export class MemStorage implements IStorage {
     return tenant ? allWells.filter(well => well.tenant === tenant) : allWells;
   }
 
-  async getWell(id: string): Promise<Well | undefined> {
-    return this.wells.get(id);
+  async getWell(id: string, tenant: string): Promise<Well | undefined> {
+    const well = this.wells.get(id);
+    if (well && well.tenant === tenant) {
+      return well;
+    }
+    return undefined;
   }
 
   async createWell(insertWell: InsertWell): Promise<Well> {
+    const id = insertWell.id || randomUUID();
     const well: Well = {
       ...insertWell,
+      id,
       status: insertWell.status || "drilling",
       progress: insertWell.progress || 0,
       tenant: insertWell.tenant || "public",
       rigId: insertWell.rigId ?? null,
       createdAt: new Date(),
     };
-    this.wells.set(well.id, well);
+    this.wells.set(id, well);
     return well;
   }
 
