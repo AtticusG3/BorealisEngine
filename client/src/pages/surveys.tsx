@@ -76,13 +76,15 @@ export default function Surveys() {
 
   // Fetch survey inputs for selected well
   const { data: inputs = [] } = useQuery({
-    queryKey: ["/api/survey/inputs"],
+    queryKey: ["/api/survey/inputs", selectedWellId],
+    queryFn: () => fetch(`/api/survey/inputs?wellId=${selectedWellId}`).then(res => res.json()),
     enabled: !!selectedWellId,
   });
 
   // Fetch survey solutions for selected well
   const { data: solutions = [] } = useQuery({
-    queryKey: ["/api/survey/solutions"],
+    queryKey: ["/api/survey/solutions", selectedWellId],
+    queryFn: () => fetch(`/api/survey/solutions?wellId=${selectedWellId}`).then(res => res.json()),
     enabled: !!selectedWellId,
   });
 
@@ -104,8 +106,8 @@ export default function Surveys() {
     mutationFn: (data: any) => apiRequest("/api/survey/inputs", "POST", data),
     onSuccess: () => {
       toast({ title: "Success", description: "Survey input added successfully" });
-      queryClient.invalidateQueries({ queryKey: ["/api/survey/inputs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/survey/solutions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/survey/inputs", selectedWellId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/survey/solutions", selectedWellId] });
       setManualInput({ md_m: "", inc_deg: "", azi_deg: "" });
     },
     onError: () => {
@@ -119,10 +121,10 @@ export default function Surveys() {
     onSuccess: (data: any) => {
       toast({ 
         title: "Success", 
-        description: `CSV uploaded successfully. ${data.count} records processed.` 
+        description: `CSV uploaded successfully. ${data.rows} records processed.` 
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/survey/inputs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/survey/solutions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/survey/inputs", selectedWellId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/survey/solutions", selectedWellId] });
       setCsvFile(null);
     },
     onError: () => {
@@ -143,7 +145,7 @@ export default function Surveys() {
     }
     
     manualInputMutation.mutate({
-      wellId: selectedWellId,
+      well_id: selectedWellId,
       md_m: parseFloat(manualInput.md_m),
       inc_deg: parseFloat(manualInput.inc_deg),
       azi_deg: parseFloat(manualInput.azi_deg),

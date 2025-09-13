@@ -172,24 +172,47 @@ const startPythonServices = async () => {
 // Proxy routes for Python services
 const addProxyRoutes = (app: express.Application) => {
   // Survey service proxy routes
-  app.all('/api/survey*', requireTenant, async (req, res) => {
+  app.all('/api/survey/*', requireTenant, async (req, res) => {
     try {
-      const targetPath = req.path.replace('/api/survey', '');
-      const url = `http://127.0.0.1:8010${targetPath}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+      // Map /api/survey/* to /surveys/* for the Python service
+      const originalPath = req.path;
+      const targetPath = originalPath.replace('/api/survey', '/surveys');
+      const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+      const url = `http://127.0.0.1:8010${targetPath}${queryString}`;
+      
+      log(`Survey proxy: ${originalPath} -> ${url}`);
+      
+      // Prepare headers
+      const headers: Record<string, string> = {
+        'x-tenant-id': req.tenant,
+      };
+      
+      // Handle different content types
+      let body: any = undefined;
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const contentType = req.headers['content-type'];
+        if (contentType?.includes('application/json')) {
+          headers['Content-Type'] = 'application/json';
+          body = JSON.stringify(req.body);
+        } else if (contentType?.includes('multipart/form-data')) {
+          // For FormData, we need to handle this differently
+          body = req.body;
+        } else {
+          headers['Content-Type'] = contentType || 'application/json';
+          body = req.method !== 'GET' ? JSON.stringify(req.body) : undefined;
+        }
+      }
       
       const response = await fetch(url, {
         method: req.method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': req.tenant,
-          ...req.headers
-        },
-        body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
+        headers,
+        body
       });
 
       const data = await response.text();
-      res.status(response.status).set(Object.fromEntries(response.headers.entries())).send(data);
+      res.status(response.status).send(data);
     } catch (error) {
+      log(`Survey proxy error: ${error}`);
       res.status(503).json({ error: 'Survey service unavailable' });
     }
   });
@@ -197,22 +220,32 @@ const addProxyRoutes = (app: express.Application) => {
   // Reports service proxy routes  
   app.all('/api/reports*', requireTenant, async (req, res) => {
     try {
+      // Keep the path as-is since reports service expects /reports, /templates etc.
       const targetPath = req.path.replace('/api/reports', '');
-      const url = `http://127.0.0.1:8020${targetPath}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+      const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+      const url = `http://127.0.0.1:8020${targetPath}${queryString}`;
+      
+      const headers: Record<string, string> = {
+        'x-tenant-id': req.tenant,
+      };
+      
+      let body: any = undefined;
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const contentType = req.headers['content-type'];
+        headers['Content-Type'] = contentType || 'application/json';
+        body = JSON.stringify(req.body);
+      }
       
       const response = await fetch(url, {
         method: req.method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': req.tenant,
-          ...req.headers
-        },
-        body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
+        headers,
+        body
       });
 
       const data = await response.text();
-      res.status(response.status).set(Object.fromEntries(response.headers.entries())).send(data);
+      res.status(response.status).send(data);
     } catch (error) {
+      log(`Reports proxy error: ${error}`);
       res.status(503).json({ error: 'Reports service unavailable' });
     }
   });

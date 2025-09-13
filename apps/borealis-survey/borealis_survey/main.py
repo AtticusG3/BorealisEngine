@@ -138,14 +138,14 @@ def post_input(body: InputJSON):
         return {"input_id": inp.id, "solution_id": sol.id, "flags": flags}
 
 @app.post("/surveys/inputs/csv")
-async def post_input_csv(well_id: str = Form(...), file: UploadFile = File(...)):
+async def post_input_csv(wellId: str = Form(...), file: UploadFile = File(...)):
     data = await file.read()
     text = data.decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(text))
     inserted = 0
     for row in reader:
         body = InputJSON(
-            well_id=well_id,
+            well_id=wellId,
             md_m=float(row.get("MD") or row.get("md") or row.get("md_m")),
             inc_deg=float(row.get("INC") or row.get("inc_deg") or 0),
             azi_deg=float(row.get("AZI") or row.get("azi_deg") or 0),
@@ -154,6 +154,21 @@ async def post_input_csv(well_id: str = Form(...), file: UploadFile = File(...))
         post_input(body)  # reuse logic
         inserted += 1
     return {"rows": inserted}
+
+@app.get("/surveys/inputs")
+def list_inputs(wellId: str):
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(SurveyInput).where(SurveyInput.well_id==wellId).order_by(SurveyInput.md_m.asc())
+        ).scalars().all()
+        out = []
+        for inp in rows:
+            out.append({
+                "id": inp.id, "md_m": inp.md_m, "inc_deg": inp.inc_deg, "azi_deg": inp.azi_deg,
+                "source": inp.source, "time": inp.time.isoformat() if inp.time else None,
+                "run_id": inp.run_id
+            })
+        return out
 
 @app.get("/surveys/solutions")
 def list_solutions(wellId: str):
@@ -166,7 +181,7 @@ def list_solutions(wellId: str):
         for sol, md in rows:
             out.append({
                 "id": sol.id, "md_m": md, "inc_deg": sol.inc_deg, "azi_deg": sol.azi_deg,
-                "tvd_m": sol.tvd_m, "n": sol.northing_m, "e": sol.easting_m, "dls_deg30m": sol.dogleg_deg30m,
+                "tvd_m": sol.tvd_m, "n_m": sol.northing_m, "e_m": sol.easting_m, "dls_deg_30m": sol.dogleg_deg30m,
                 "flags": sol.flags, "frame": sol.frame
             })
         return out
