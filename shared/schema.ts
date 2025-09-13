@@ -1,50 +1,59 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, unique, primaryKey, foreignKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").default(sql`gen_random_uuid()`),
   username: text("username").notNull(),
   password: text("password").notNull(), // Will store hashed passwords
   roles: text("roles").array().default(sql`ARRAY['BRLS_Viewer']`),
   tenant: text("tenant").notNull().default("public"),
 }, (table) => ({
+  // Composite primary key for multi-tenancy
+  pk: primaryKey({ columns: [table.tenant, table.id] }),
   // Composite unique constraint for multi-tenancy
   tenantUsernameUnique: unique().on(table.tenant, table.username),
 }));
 
 export const rigs = pgTable("rigs", {
-  id: varchar("id").primaryKey(),
+  id: varchar("id"),
   name: text("name").notNull(),
   status: text("status").notNull().default("active"),
   tenant: text("tenant").notNull().default("public"),
   createdAt: timestamp("created_at").default(sql`now()`),
 }, (table) => ({
-  // Composite unique constraint for multi-tenancy
-  tenantIdUnique: unique().on(table.tenant, table.id),
+  // Composite primary key for multi-tenancy
+  pk: primaryKey({ columns: [table.tenant, table.id] }),
 }));
 
 export const wells = pgTable("wells", {
-  id: varchar("id").primaryKey(),
+  id: varchar("id"),
   name: text("name").notNull(),
   status: text("status").notNull().default("drilling"),
   progress: integer("progress").notNull().default(0),
-  rigId: varchar("rig_id").references(() => rigs.id),
+  rigId: varchar("rig_id"),
   tenant: text("tenant").notNull().default("public"),
   createdAt: timestamp("created_at").default(sql`now()`),
 }, (table) => ({
-  // Composite unique constraint for multi-tenancy
-  tenantIdUnique: unique().on(table.tenant, table.id),
+  // Composite primary key for multi-tenancy
+  pk: primaryKey({ columns: [table.tenant, table.id] }),
+  // Composite foreign key for multi-tenancy
+  rigFK: foreignKey({
+    columns: [table.tenant, table.rigId],
+    foreignColumns: [rigs.tenant, rigs.id],
+  }).onUpdate("cascade").onDelete("set null"),
 }));
 
 export const systemSettings = pgTable("system_settings", {
-  id: varchar("id").primaryKey().$defaultFn(() => randomUUID()),
+  id: varchar("id").$defaultFn(() => randomUUID()),
   key: text("key").notNull(),
   value: text("value").notNull(),
   tenant: text("tenant").notNull().default("public"),
 }, (table) => ({
+  // Composite primary key for multi-tenancy
+  pk: primaryKey({ columns: [table.tenant, table.id] }),
   // Composite unique constraint for multi-tenancy
   tenantKeyUnique: unique().on(table.tenant, table.key),
 }));
