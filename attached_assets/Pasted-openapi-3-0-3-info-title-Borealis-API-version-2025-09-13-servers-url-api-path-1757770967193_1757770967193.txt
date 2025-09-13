@@ -1,0 +1,637 @@
+openapi: 3.0.3
+info:
+  title: Borealis API
+  version: "2025-09-13"
+servers:
+  - url: /api
+paths:
+  /companies:
+    post:
+      summary: Create company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+  /companies/{id}:
+    get:
+      summary: Get company
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+
+  /rigs:
+    post:
+      summary: Create rig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RigCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rig' }
+  /rigs/{id}:
+    get:
+      summary: Get rig
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rig' }
+
+  /wells:
+    post:
+      summary: Create well (bootstraps SurveySettings)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WellCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Well' }
+  /wells/{id}:
+    get:
+      summary: Get well
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Well' }
+    patch:
+      summary: Update well
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WellUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Well' }
+
+  /wells/{id}/targets:
+    post:
+      summary: Add target to well
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TargetCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Target' }
+
+  /wells/{id}/survey-settings:
+    get:
+      summary: Get survey settings for well
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveySettings' }
+    patch:
+      summary: Update survey settings for well
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SurveySettingsUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveySettings' }
+
+  /bhas:
+    post:
+      summary: Create BHA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BHACreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BHA' }
+  /bhas/{id}:
+    get:
+      summary: Get BHA
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BHA' }
+
+  /bits:
+    post:
+      summary: Create bit (auto-calculates TFA on save)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BitCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bit' }
+
+  /wells/{id}/mud-snapshots:
+    post:
+      summary: Add mud snapshot for a given report date/period
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MudSnapshotCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MudSnapshot' }
+
+  /wells/{id}/time-logs:
+    post:
+      summary: Add a time log row (no overlap enforced)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TimeLogCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeLog' }
+
+  /wells/{id}/personnel:
+    post:
+      summary: Upsert personnel roster for date
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonnelUpsert' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Personnel' }
+
+  /attachments:
+    post:
+      summary: Upload attachment and link to an entity
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/AttachmentUpload' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attachment' }
+
+  /reports/ddr:
+    get:
+      summary: Generate DDR
+      parameters:
+        - in: query
+          name: wellId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: HTML/PDF DDR
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+
+components:
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+
+    Company:
+      type: object
+      required: [id, legalName]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        legalName: { type: string }
+        address1: { type: string, nullable: true }
+        address2: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        logoUrl: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CompanyCreate:
+      type: object
+      required: [legalName]
+      properties:
+        legalName: { type: string }
+        address1: { type: string }
+        address2: { type: string }
+        city: { type: string }
+        state: { type: string }
+        country: { type: string }
+        logoUrl: { type: string }
+
+    Rig:
+      type: object
+      required: [id, name]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        number: { type: string, nullable: true }
+        contractorCompanyId: { $ref: '#/components/schemas/UUID' }
+        derrickRating: { type: number, nullable: true }
+        topDriveModel: { type: string, nullable: true }
+        pumpInventoryJson: { type: object, additionalProperties: true, nullable: true }
+        pumpChartsFiles: { type: array, items: { type: string }, nullable: true }
+        mudSystemJson: { type: object, additionalProperties: true, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RigCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        number: { type: string }
+        contractorCompanyId: { $ref: '#/components/schemas/UUID' }
+        derrickRating: { type: number }
+        topDriveModel: { type: string }
+        pumpInventoryJson: { type: object, additionalProperties: true }
+        pumpChartsFiles: { type: array, items: { type: string } }
+        mudSystemJson: { type: object, additionalProperties: true }
+
+    Well:
+      type: object
+      required: [id, name]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        uwi: { type: string, nullable: true }
+        field: { type: string, nullable: true }
+        lease: { type: string, nullable: true }
+        operatorCompanyId: { $ref: '#/components/schemas/UUID' }
+        rigId: { $ref: '#/components/schemas/UUID' }
+        spudAtLocal: { type: string, format: date-time, nullable: true }
+        spudAtUTC: { type: string, format: date-time, nullable: true }
+        plannedTD: { type: number, nullable: true }
+        surfaceLat: { type: number, format: double, nullable: true }
+        surfaceLon: { type: number, format: double, nullable: true }
+        surfaceLegalDesc: { type: string, nullable: true }
+        crsDatum: { $ref: '#/components/schemas/CRSDatum' }
+        projection: { type: string, nullable: true }
+        utmZone: { type: string, nullable: true }
+        northRef: { $ref: '#/components/schemas/NorthRef' }
+        kbElev: { type: number, nullable: true }
+        dfElev: { type: number, nullable: true }
+        brtElev: { type: number, nullable: true }
+        elevUnit: { $ref: '#/components/schemas/LengthUnit' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    WellCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        uwi: { type: string }
+        field: { type: string }
+        lease: { type: string }
+        operatorCompanyId: { $ref: '#/components/schemas/UUID' }
+        rigId: { $ref: '#/components/schemas/UUID' }
+        spudAtLocal: { type: string, format: date-time }
+        spudAtUTC: { type: string, format: date-time }
+        plannedTD: { type: number }
+        surfaceLat: { type: number, format: double }
+        surfaceLon: { type: number, format: double }
+        surfaceLegalDesc: { type: string }
+        crsDatum: { $ref: '#/components/schemas/CRSDatum' }
+        projection: { type: string, example: "UTM" }
+        utmZone: { type: string, example: "56J" }
+        northRef: { $ref: '#/components/schemas/NorthRef' }
+        kbElev: { type: number }
+        dfElev: { type: number }
+        brtElev: { type: number }
+        elevUnit: { $ref: '#/components/schemas/LengthUnit' }
+    WellUpdate:
+      allOf:
+        - $ref: '#/components/schemas/WellCreate'
+
+    Target:
+      type: object
+      required: [id, wellId, name]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        wellId: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        tvdss: { type: number, nullable: true }
+        gridX: { type: number, nullable: true }
+        gridY: { type: number, nullable: true }
+        radius: { type: number, nullable: true }
+    TargetCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        tvdss: { type: number }
+        gridX: { type: number }
+        gridY: { type: number }
+        radius: { type: number }
+
+    SurveySettings:
+      type: object
+      required: [id, wellId]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        wellId: { $ref: '#/components/schemas/UUID' }
+        declinationSource: { $ref: '#/components/schemas/DeclinationSource' }
+        declinationDeg: { type: number, nullable: true }
+        declinationDate: { type: string, format: date, nullable: true }
+        applySag: { type: boolean, nullable: true }
+        applyMSA: { type: boolean, nullable: true }
+        comments: { type: string, nullable: true }
+    SurveySettingsUpdate:
+      type: object
+      properties:
+        declinationSource: { $ref: '#/components/schemas/DeclinationSource' }
+        declinationDeg: { type: number }
+        declinationDate: { type: string, format: date }
+        applySag: { type: boolean }
+        applyMSA: { type: boolean }
+        comments: { type: string }
+
+    BHA:
+      type: object
+      required: [id, wellId, runNo]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        wellId: { $ref: '#/components/schemas/UUID' }
+        runNo: { type: integer }
+        holeSize: { type: number, nullable: true }
+        sectionName: { type: string, nullable: true }
+        startMD: { type: number, nullable: true }
+        endMD: { type: number, nullable: true }
+        componentsJson: { type: array, items: { type: object }, nullable: true }
+        createdAt: { type: string, format: date-time }
+    BHACreate:
+      type: object
+      required: [wellId, runNo]
+      properties:
+        wellId: { $ref: '#/components/schemas/UUID' }
+        runNo: { type: integer }
+        holeSize: { type: number }
+        sectionName: { type: string }
+        startMD: { type: number }
+        endMD: { type: number }
+        componentsJson: { type: array, items: { type: object } }
+
+    Bit:
+      type: object
+      required: [id, bhaId]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        bhaId: { $ref: '#/components/schemas/UUID' }
+        manufacturer: { type: string, nullable: true }
+        type: { type: string, nullable: true }
+        iadc: { type: string, nullable: true }
+        nozzleSizesCsv: { type: string, nullable: true, example: "12,12,12,11,13" }
+        tfa_in2: { type: number, nullable: true }
+        dullIADC: { type: string, nullable: true }
+        remarks: { type: string, nullable: true }
+    BitCreate:
+      type: object
+      required: [bhaId]
+      properties:
+        bhaId: { $ref: '#/components/schemas/UUID' }
+        manufacturer: { type: string }
+        type: { type: string }
+        iadc: { type: string }
+        nozzleSizesCsv: { type: string }
+        dullIADC: { type: string }
+        remarks: { type: string }
+
+    MudSnapshot:
+      type: object
+      required: [id, wellId, reportDate, period]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        wellId: { $ref: '#/components/schemas/UUID' }
+        reportDate: { type: string, format: date }
+        period: { type: string, enum: [AM, PM] }
+        mw: { type: number, nullable: true }
+        pv: { type: number, nullable: true }
+        yp: { type: number, nullable: true }
+        gels10: { type: number, nullable: true }
+        gels30: { type: number, nullable: true }
+        filtrate: { type: number, nullable: true }
+        solids: { type: number, nullable: true }
+        ecd: { type: number, nullable: true }
+    MudSnapshotCreate:
+      type: object
+      required: [reportDate, period]
+      properties:
+        reportDate: { type: string, format: date }
+        period: { type: string, enum: [AM, PM] }
+        mw: { type: number }
+        pv: { type: number }
+        yp: { type: number }
+        gels10: { type: number }
+        gels30: { type: number }
+        filtrate: { type: number }
+        solids: { type: number }
+        ecd: { type: number }
+
+    TimeLog:
+      type: object
+      required: [id, wellId, reportDate, startTime, endTime]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        wellId: { $ref: '#/components/schemas/UUID' }
+        reportDate: { type: string, format: date }
+        activity: { type: string, nullable: true }
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time }
+        npt: { type: boolean, default: false }
+        nptCategory: { type: string, nullable: true }
+        costCode: { type: string, nullable: true }
+        comments: { type: string, nullable: true }
+    TimeLogCreate:
+      type: object
+      required: [reportDate, startTime, endTime]
+      properties:
+        reportDate: { type: string, format: date }
+        activity: { type: string }
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time }
+        npt: { type: boolean }
+        nptCategory: { type: string }
+        costCode: { type: string }
+        comments: { type: string }
+
+    Personnel:
+      type: object
+      required: [id, wellId, reportDate]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        wellId: { $ref: '#/components/schemas/UUID' }
+        reportDate: { type: string, format: date }
+        companyman: { type: string, nullable: true }
+        directionalDriller: { type: string, nullable: true }
+        mwdEngineer: { type: string, nullable: true }
+        mudEngineer: { type: string, nullable: true }
+        driller: { type: string, nullable: true }
+        derrickman: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+    PersonnelUpsert:
+      type: object
+      required: [reportDate]
+      properties:
+        reportDate: { type: string, format: date }
+        companyman: { type: string }
+        directionalDriller: { type: string }
+        mwdEngineer: { type: string }
+        mudEngineer: { type: string }
+        driller: { type: string }
+        derrickman: { type: string }
+        notes: { type: string }
+
+    Attachment:
+      type: object
+      required: [id, entityType, entityId, filename, url]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        entityType: { type: string, enum: [Company, Rig, Well, BHA, Bit, Survey, TimeLog, MudSnapshot, Personnel, Target] }
+        entityId: { $ref: '#/components/schemas/UUID' }
+        filename: { type: string }
+        url: { type: string }
+        mime: { type: string, nullable: true }
+        uploadedAt: { type: string, format: date-time }
+    AttachmentUpload:
+      type: object
+      required: [entityType, entityId, file]
+      properties:
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        file:
+          type: string
+          format: binary
+
+    CRSDatum:
+      type: string
+      enum: [WGS84, GDA2020, NAD83]
+    NorthRef:
+      type: string
+      enum: [TRUE, MAGNETIC, GRID]
+    LengthUnit:
+      type: string
+      enum: [m, ft]
+    DeclinationSource:
+      type: string
+      enum: [WMM, IGRF, MANUAL]
+
+    Error:
+      type: object
+      properties:
+        message: { type: string }

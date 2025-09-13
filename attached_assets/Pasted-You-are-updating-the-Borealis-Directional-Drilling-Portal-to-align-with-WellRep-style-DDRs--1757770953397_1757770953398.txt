@@ -1,0 +1,120 @@
+You are updating the “Borealis” Directional Drilling Portal to align with WellRep-style DDRs.
+
+## Goals
+1) Add missing domain fields (Company, Rig, Well, BHA/Bit, SurveySettings, TimeLog, Mud, Personnel).
+2) Wire data into:
+   - Survey engine (tie-in, CRS, declination)
+   - Reporting engine (DDR cover + daily sections)
+   - UI (forms, read-only badges, map widgets)
+3) Provide migrations, API endpoints, validation, and front-end forms.
+4) Preserve existing data; all changes are backward-compatible.
+
+## Data Model Changes (SQL/ORM-agnostic)
+- Company { id, legalName, address1, address2, city, state, country, logoUrl, createdAt, updatedAt }
+- Rig { id, name, number, contractorCompanyId→Company, derrickRating, topDriveModel, pumpInventoryJson, pumpChartsFiles[], mudSystemJson, createdAt, updatedAt }
+- Well {
+    id, name, uwi, field, lease, operatorCompanyId→Company,
+    rigId→Rig,
+    spudAtLocal, spudAtUTC, plannedTD,
+    // Geodesy
+    surfaceLat, surfaceLon, surfaceLegalDesc,
+    crsDatum (enum: WGS84, GDA2020, NAD83, etc),
+    projection (e.g., UTM), utmZone, northRef (enum: TRUE, MAGNETIC, GRID),
+    kbElev, dfElev, brtElev, elevUnit (enum: m, ft),
+    createdAt, updatedAt
+  }
+- Target { id, wellId→Well, name, tvdss, gridX, gridY, radius }
+- SurveySettings {
+    id, wellId→Well,
+    declinationSource (enum: WMM, IGRF, MANUAL),
+    declinationDeg, declinationDate, applySag (bool), applyMSA (bool), comments
+}
+- BHA { id, wellId→Well, runNo, holeSize, sectionName, startMD, endMD, componentsJson[], createdAt }
+- Bit {
+    id, bhaId→BHA, manufacturer, type, iadc, nozzleSizesCsv, tfa_in2, dullIADC, remarks
+}
+- MudSnapshot { id, wellId→Well, reportDate, period (AM|PM), mw, pv, yp, gels10, gels30, filtrate, solids, ecd }
+- TimeLog {
+    id, wellId→Well, reportDate, activity, startTime, endTime,
+    npt (bool), nptCategory (enum), costCode, comments
+}
+- Personnel {
+    id, wellId→Well, reportDate,
+    companyman, directionalDriller, mwdEngineer, mudEngineer, driller, derrickman, etc…
+}
+- Attachments { id, entityType, entityId, filename, url, mime, uploadedAt }
+
+## Business Logic
+- On Well create:
+  - Require surfaceLat/surfaceLon OR surfaceLegalDesc + CRS.
+  - Store northRef, crsDatum, projection, utmZone, and elevations (kb/df/brt + unit).
+  - Trigger SurveySettings bootstrap: declinationSource=WMM; compute declinationDeg for surfaceLat/Lon at current date; store declinationDate.
+- Geodesy utilities:
+  - Add module `geo.ts` wrapping proj4 for Lat/Lon ⇄ UTM using (crsDatum, utmZone).
+  - Expose service method: `toUTM(lat, lon, datum, zone)` and `toLL(easting, northing, datum, zone)`.
+- Survey engine:
+  - Read Well.northRef and SurveySettings.declinationDeg/Date for tie-in & station reductions.
+- Bit/TFA:
+  - On Bit save: parse nozzleSizesCsv (e.g., "12,12,12,11,13" in 32nds inch), compute TFA (in^2) and persist to `tfa_in2`.
+- TimeLog:
+  - Enforce non-overlap per day; compute durations; flag NPT; aggregate by costCode for DDR.
+- Personnel:
+  - Per-day roster tied to reportDate; default from previous day.
+
+## API Endpoints (Express)
+- POST /api/companies, GET /api/companies/:id
+- POST /api/rigs, GET /api/rigs/:id
+- POST /api/wells, GET /api/wells/:id, PATCH /api/wells/:id
+- POST /api/wells/:id/targets
+- GET /api/wells/:id/survey-settings, PATCH /api/wells/:id/survey-settings
+- POST /api/bhas, GET /api/bhas/:id
+- POST /api/bits (auto-calc TFA on create/update)
+- POST /api/wells/:id/mud-snapshots
+- POST /api/wells/:id/time-logs
+- POST /api/wells/:id/personnel
+- POST /api/attachments (entityType, entityId, file upload)
+
+Validation:
+- Well: require (lat & lon) and (crsDatum, projection, utmZone), plus elevations with unit.
+- SurveySettings: if declinationSource=MANUAL then declinationDeg + declinationDate required.
+- TimeLog: disallow overlapping intervals for same well+reportDate.
+
+## Front-end (React)
+- Well Create/Edit:
+  - Tabs: “General”, “Location & CRS”, “Elevations”, “Survey Settings”.
+  - Map preview (read-only): show surfaceLat/Lon and computed UTM (use geo.ts).
+- BHA/Bit Forms:
+  - Nozzle CSV input with live TFA preview.
+- DDR (Daily):
+  - Header: Company logo, Operator, Rig, Well, pad/lease, surface loc (LL + UTM), KB/DF/BRT, declination, northRef, personnel roster.
+  - Sections: BHA & Bit, Mud (AM/PM), Surveys (latest), Hydraulics, Time Breakdown (with NPT badges).
+- Admin:
+  - Company & Rig inventory (logos, pump charts upload).
+
+## Reporting Engine Integration
+- Inject the new fields into PDF/HTML DDR templates:
+  - Cover/Header uses Company logo, Operator, Rig, Well, surface location LL & UTM, elevations.
+  - Survey block prints north reference and declination date/value.
+  - Bit block prints nozzles and TFA.
+  - Time Breakdown prints activity list grouped by NPT/Prod with totals and cost codes.
+- Export endpoints: GET /api/reports/ddr?wellId=…&date=…
+
+## Imports (optional but stub now)
+- Define CSV importers:
+  - Surveys (Compass/WellSeeker format autodetect).
+  - BHA components list.
+  - Pump charts (file upload only, linked to Rig).
+
+## Migrations & Backfill
+- Create tables above; backfill existing wells with default CRS=WGS84/UTM zone (configurable).
+- Add script to compute declination for wells with lat/lon (WMM), set SurveySettings.
+
+## Testing
+- Unit tests for TFA calculator, geodesy transforms, TimeLog overlap validation, declination computation.
+- Integration tests for Well create → SurveySettings bootstrap.
+
+Deliverables:
+- DB migrations, updated models, services (`geo.ts`, `tfa.ts`), validators.
+- New Express routes with OpenAPI JSON.
+- React forms & DDR view updates.
+- Report template changes with sample PDF.
