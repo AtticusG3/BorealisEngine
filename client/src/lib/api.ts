@@ -1,5 +1,5 @@
 import { apiRequest } from "./queryClient";
-import type { HealthStatus, Rig, Well, SettingsResponse, UserInfo, Company, SurveySettings } from "@shared/schema";
+import type { HealthStatus, Rig, Well, SettingsResponse, UserInfo, Company, SurveySettings, BHA, Bit } from "@shared/schema";
 
 const BASE_URL = "/api";
 
@@ -129,6 +129,84 @@ export const api = {
       const url = `${BASE_URL}/settings/resolve${params.toString() ? `?${params.toString()}` : ""}`;
       const res = await fetch(url, { headers });
       if (!res.ok) throw new Error("Failed to resolve settings");
+      return res.json();
+    }
+  },
+
+  bhas: {
+    list: async (tenantId?: string): Promise<BHA[]> => {
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/bhas`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch BHAs");
+      return res.json();
+    },
+    
+    get: async (id: string, tenantId?: string): Promise<BHA> => {
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/bhas/${id}`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch BHA");
+      return res.json();
+    },
+
+    getByWell: async (wellId: string, tenantId?: string): Promise<BHA[]> => {
+      const params = new URLSearchParams();
+      params.append("wellId", wellId);
+      if (tenantId) {
+        params.append("tenant", tenantId);
+      }
+      
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      
+      const res = await fetch(`${BASE_URL}/bhas?${params.toString()}`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch BHAs for well");
+      return res.json();
+    }
+  },
+
+  bits: {
+    list: async (tenantId?: string): Promise<Bit[]> => {
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/bits`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch bits");
+      return res.json();
+    },
+    
+    get: async (id: string, tenantId?: string): Promise<Bit> => {
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/bits/${id}`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch bit");
+      return res.json();
+    },
+
+    getByBHA: async (bhaId: string, tenantId?: string): Promise<Bit[]> => {
+      const params = new URLSearchParams();
+      params.append("bhaId", bhaId);
+      if (tenantId) {
+        params.append("tenant", tenantId);
+      }
+      
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      
+      const res = await fetch(`${BASE_URL}/bits?${params.toString()}`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch bits for BHA");
       return res.json();
     }
   }
