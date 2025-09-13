@@ -174,9 +174,14 @@ const addProxyRoutes = (app: express.Application) => {
   // Survey service proxy routes
   app.all('/api/survey/*', requireTenant, async (req, res) => {
     try {
-      // Map /api/survey/* to /surveys/* for the Python service
+      // Map paths correctly: health goes to /health, others go to /surveys/*
       const originalPath = req.path;
-      const targetPath = originalPath.replace('/api/survey', '/surveys');
+      let targetPath;
+      if (originalPath === '/api/survey/health') {
+        targetPath = '/health';
+      } else {
+        targetPath = originalPath.replace('/api/survey', '/surveys');
+      }
       const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
       const url = `http://127.0.0.1:8010${targetPath}${queryString}`;
       
