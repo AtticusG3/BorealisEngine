@@ -1,0 +1,537 @@
+You are scaffolding a brand-new monorepo called **Borealis** (internal codename) for a modular, multi-tenant Directional Drilling portal (edge + cloud). Create all files and folders below with the exact contents provided. When done, run the API dev server so I can hit /health, and give me the commands to start the UI.
+
+# =========================
+# 1) Repo structure & basics
+# =========================
+Create this tree:
+
+borealis/
+  README.md
+  .gitignore
+  Makefile
+  pyproject.toml
+  package.json
+  .tool-versions
+  apps/
+    borealis-api/
+      pyproject.toml
+      borealis_api/
+        __init__.py
+        main.py
+        deps.py
+        settings.py
+        db.py
+        routers/
+          __init__.py
+          health.py
+          auth.py
+          rigs.py
+          wells.py
+          settings_.py
+      tests/
+        test_health.py
+    borealis-ui/
+      package.json
+      next.config.mjs
+      tsconfig.json
+      src/
+        pages/
+          index.tsx
+        app/
+          layout.tsx
+          page.tsx
+        lib/
+          api.ts
+      public/.keep
+  packages/
+    borealis-common/
+      python/
+        pyproject.toml
+        borealis_common/__init__.py
+      typescript/
+        package.json
+        src/index.ts
+  deploy/
+    docker/
+      edge/docker-compose.yml
+      cloud/docker-compose.yml
+  .github/
+    workflows/ci.yml
+
+# =================================
+# 2) Root files – contents to write
+# =================================
+
+# borealis/README.md
+Write:
+"""
+# Borealis (internal codename)
+
+Modular, multi-tenant portal for Directional Drillers in CSG / O&G. Edge-first with cloud sync.
+Core modules: Ingestor, Survey Engine + Verifier, BHA Manager, Traces, Smart Alarms, Reports, Sync.
+
+## Quick start (dev)
+- Backend (FastAPI): `cd apps/borealis-api && uvicorn borealis_api.main:app --reload --host 0.0.0.0 --port 8000`
+- Frontend (Next.js): `cd apps/borealis-ui && pnpm i && pnpm dev`
+
+API health: http://localhost:8000/health
+UI: http://localhost:3000/
+
+## Monorepo layout
+- apps/borealis-api: FastAPI backend (tenant-aware skeleton)
+- apps/borealis-ui: Next.js UI shell
+- packages/borealis-common: shared types (py+ts)
+- deploy/docker: edge & cloud docker-compose (for later)
+"""
+
+# borealis/.gitignore
+Write:
+"""
+# Node
+node_modules
+pnpm-lock.yaml
+# Python
+__pycache__/
+*.py[cod]
+.venv
+.uv
+# Env
+.env
+.env.*
+# Replit/Editors
+.replit
+.idea
+.vscode
+# Build
+dist
+build
+coverage
+"""
+
+# borealis/Makefile
+Write:
+"""
+.PHONY: api ui fmt lint test
+
+api:
+\tcd apps/borealis-api && uvicorn borealis_api.main:app --reload --host 0.0.0.0 --port 8000
+
+ui:
+\tcd apps/borealis-ui && pnpm i && pnpm dev
+
+fmt:
+\trufflehog || true
+
+lint:
+\t@echo "add linters here"
+
+test:
+\tcd apps/borealis-api && pytest -q
+"""
+
+# borealis/pyproject.toml (just to pin a workspace tool)
+Write:
+"""
+[tool.ruff]
+line-length = 100
+"""
+
+# borealis/package.json (workspace helper)
+Write:
+{
+  "name": "borealis-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/borealis-ui",
+    "packages/borealis-common/typescript"
+  ],
+  "packageManager": "pnpm@9.7.1",
+  "scripts": {
+    "dev:api": "cd apps/borealis-api && uvicorn borealis_api.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:ui": "cd apps/borealis-ui && pnpm dev"
+  }
+}
+
+# borealis/.tool-versions (optional for devs)
+Write:
+"""
+nodejs 20.14.0
+python 3.11.9
+"""
+
+# ============================================
+# 3) Backend: apps/borealis-api – exact files
+# ============================================
+
+# apps/borealis-api/pyproject.toml
+Write:
+"""
+[tool.poetry]
+name = "borealis-api"
+version = "0.1.0"
+description = "Borealis FastAPI backend"
+authors = ["Cyberloop"]
+readme = "README.md"
+packages = [{ include = "borealis_api" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.30.6"}
+pydantic-settings = "^2.5.2"
+python-jose = "^3.3.0"
+httpx = "^0.27.2"
+sqlalchemy = "^2.0.35"
+psycopg = {version="^3.2.1", extras=["binary"]}
+alembic = "^1.13.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+"""
+
+# apps/borealis-api/borealis_api/__init__.py
+Write: ""
+# apps/borealis-api/borealis_api/settings.py
+Write:
+"""
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    APP_NAME: str = "Borealis API"
+    APP_MODE: str = "dev"
+    OIDC_ISSUER: str = "http://localhost/oidc"  # placeholder
+    TENANT_ID_HEADER: str = "x-tenant-id"
+    DB_URL: str = "postgresql+psycopg://user:pass@localhost:5432/borealis"  # placeholder (not required to run)
+
+settings = Settings()
+"""
+
+# apps/borealis-api/borealis_api/db.py
+Write:
+"""
+# Minimal placeholder for future DB wiring; not required for /health.
+from typing import Optional
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def noop_db():
+    yield
+"""
+
+# apps/borealis-api/borealis_api/deps.py
+Write:
+"""
+from fastapi import Header, HTTPException
+from .settings import settings
+
+def get_tenant_id(x_tenant_id: str | None = Header(default=None)):
+    # Basic tenant extraction (expand later with OIDC/JWT)
+    return x_tenant_id or "public"
+"""
+
+# apps/borealis-api/borealis_api/routers/__init__.py
+Write: ""
+# apps/borealis-api/borealis_api/routers/health.py
+Write:
+"""
+from fastapi import APIRouter
+
+router = APIRouter(tags=["health"])
+
+@router.get("/health")
+def health():
+    return {"status": "ok", "service": "borealis-api"}
+"""
+
+# apps/borealis-api/borealis_api/routers/auth.py
+Write:
+"""
+from fastapi import APIRouter
+
+router = APIRouter(tags=["auth"])
+
+@router.get("/me")
+def me():
+    # Stub user info until OIDC is wired
+    return {"sub": "stub", "roles": ["BRLS_Viewer"], "tenant": "public"}
+"""
+
+# apps/borealis-api/borealis_api/routers/rigs.py
+Write:
+"""
+from fastapi import APIRouter, Depends
+from ..deps import get_tenant_id
+
+router = APIRouter(prefix="/rigs", tags=["rigs"])
+
+@router.get("")
+def list_rigs(tenant_id: str = Depends(get_tenant_id)):
+    # Stubbed data for UI wiring
+    return [{"id": "rig-001", "name": "Ensign 958", "tenant": tenant_id}]
+"""
+
+# apps/borealis-api/borealis_api/routers/wells.py
+Write:
+"""
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/wells", tags=["wells"])
+
+@router.get("")
+def list_wells():
+    return [{"id": "well-001", "name": "MR199L WB01B01"}]
+"""
+
+# apps/borealis-api/borealis_api/routers/settings_.py
+Write:
+"""
+from fastapi import APIRouter
+router = APIRouter(prefix="/settings", tags=["settings"])
+
+@router.get("/resolve")
+def resolve(keys: str | None = None):
+    # Return simple defaults; replace with hierarchy later
+    return {"survey.default_mwd_tool_family": "Tensor", "grid.default_frame": "MGA94 / Zone 56"}
+"""
+
+# apps/borealis-api/borealis_api/main.py
+Write:
+"""
+from fastapi import FastAPI
+from .routers import health, auth, rigs, wells, settings_ as settings_router
+
+app = FastAPI(title="Borealis API")
+
+app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(rigs.router)
+app.include_router(wells.router)
+app.include_router(settings_router.router)
+"""
+
+# apps/borealis-api/tests/test_health.py
+Write:
+"""
+from fastapi.testclient import TestClient
+from borealis_api.main import app
+
+def test_health():
+    c = TestClient(app)
+    r = c.get('/health')
+    assert r.status_code == 200
+    assert r.json().get('status') == 'ok'
+"""
+
+# ==========================================
+# 4) Frontend: apps/borealis-ui – exact files
+# ==========================================
+
+# apps/borealis-ui/package.json
+Write:
+{
+  "name": "borealis-ui",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "next": "14.2.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "axios": "^1.7.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/react": "^18.3.3",
+    "@types/node": "^20.14.12",
+    "eslint": "^9.9.0"
+  }
+}
+
+# apps/borealis-ui/next.config.mjs
+Write:
+export default {
+  reactStrictMode: true
+};
+
+# apps/borealis-ui/tsconfig.json
+Write:
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "es2022"],
+    "jsx": "preserve",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {},
+    "noEmit": true
+  },
+  "include": ["src"]
+}
+
+# apps/borealis-ui/src/app/layout.tsx
+Write:
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0 }}>{children}</body>
+    </html>
+  );
+}
+
+# apps/borealis-ui/src/app/page.tsx
+Write:
+"use client";
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+export default function Home() {
+  const [health, setHealth] = useState<any>(null);
+  useEffect(() => {
+    axios.get("http://localhost:8000/health").then(r => setHealth(r.data)).catch(() => setHealth({status:"offline"}));
+  }, []);
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>Borealis UI</h1>
+      <p>API health: <strong>{health ? health.status : "…"}</strong></p>
+      <p><a href="http://localhost:8000/health" target="_blank">Open API /health</a></p>
+    </main>
+  );
+}
+
+# apps/borealis-ui/src/pages/index.tsx
+Write:
+export default function LegacyIndex() { return null; }
+
+# apps/borealis-ui/src/lib/api.ts
+Write:
+export const API_BASE = process.env.NEXT_PUBLIC_API ?? "http://localhost:8000";
+
+# =======================================================
+# 5) Shared packages: packages/borealis-common – exact files
+# =======================================================
+
+# packages/borealis-common/python/pyproject.toml
+Write:
+"""
+[project]
+name = "borealis-common"
+version = "0.1.0"
+requires-python = ">=3.11"
+"""
+
+# packages/borealis-common/python/borealis_common/__init__.py
+Write:
+"""
+__all__ = ["__version__"]
+__version__ = "0.1.0"
+"""
+
+# packages/borealis-common/typescript/package.json
+Write:
+{
+  "name": "@borealis/common",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" }
+}
+
+# packages/borealis-common/typescript/src/index.ts
+Write:
+export type Rig = { id: string; name: string };
+
+# ====================================
+# 6) Docker (for later, non-blocking)
+# ====================================
+
+# deploy/docker/edge/docker-compose.yml
+Write:
+version: "3.9"
+services:
+  nats:
+    image: nats:2
+    command: ["-js","-sd","/data"]
+    restart: unless-stopped
+  api:
+    image: ghcr.io/yourorg/borealis-api:edge
+    environment:
+      - APP_MODE=edge
+    ports:
+      - "8000:8000"
+    depends_on: [nats]
+  ui:
+    image: ghcr.io/yourorg/borealis-ui:edge
+    ports:
+      - "3000:3000"
+    depends_on: [api]
+
+# deploy/docker/cloud/docker-compose.yml
+Write:
+version: "3.9"
+services:
+  nats:
+    image: nats:2
+    command: ["-js"]
+    restart: unless-stopped
+  api:
+    image: ghcr.io/yourorg/borealis-api:cloud
+    ports: ["8000:8000"]
+    depends_on: [nats]
+  ui:
+    image: ghcr.io/yourorg/borealis-ui:cloud
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+# ==================================
+# 7) Minimal CI (placeholder)
+# ==================================
+
+# .github/workflows/ci.yml
+Write:
+name: CI
+on: [push, pull_request]
+jobs:
+  test-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pytest fastapi uvicorn
+      - run: pytest apps/borealis-api/tests -q
+
+# ===========================
+# 8) After file creation: run
+# ===========================
+Now perform these tasks:
+1) Create Python venv in apps/borealis-api, install poetry, then install deps:
+   - cd apps/borealis-api
+   - python -m venv .venv && source .venv/bin/activate
+   - pip install poetry && poetry install
+
+2) Start the API:
+   - uvicorn borealis_api.main:app --reload --host 0.0.0.0 --port 8000
+
+3) Initialize the UI:
+   - cd ../../apps/borealis-ui
+   - corepack enable && corepack prepare pnpm@9.7.1 --activate || true
+   - pnpm i
+   - pnpm dev
+
+Finally, print me:
+- The API URL for /health
+- The UI URL
+- A reminder where to change API base for the UI (NEXT_PUBLIC_API)
+- Next steps: add Survey Engine and Reports modules under apps later
