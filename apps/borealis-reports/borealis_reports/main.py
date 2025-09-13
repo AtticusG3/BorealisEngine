@@ -106,7 +106,7 @@ async def prefill_report_fields(
         fields_json = template["fields_json"].copy()
         
         # Use DDR prefill functionality if wellId is provided
-        if wellId and template["name"] == "DDR_Template":
+        if wellId and template["name"] == "Borealis DDR":
             try:
                 ddr_data = await ddr_prefill(wellId)
                 # Merge DDR data with template fields

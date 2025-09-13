@@ -30,6 +30,19 @@ class ContextModel(BaseModel):
     tool_cal: dict | None = None
     provenance: dict = {}
 
+class ContextResponse(BaseModel):
+    id: str
+    well_id: str
+    mwd_tool_family: str
+    grid: dict
+    datums: dict
+    formation: dict | None
+    mag_field: dict
+    tool_cal: dict | None
+    quality_tags: list
+    provenance: dict
+    active_from: datetime
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "borealis-survey"}
@@ -51,7 +64,21 @@ def upsert_context(body: ContextModel):
 def get_context(well_id: str):
     with SessionLocal() as s:
         row = s.execute(select(SurveyContext).where(SurveyContext.well_id==well_id).order_by(SurveyContext.active_from.desc())).scalars().first()
-        return row.__dict__ if row else None
+        if not row:
+            return None
+        return {
+            "id": row.id,
+            "well_id": row.well_id,
+            "mwd_tool_family": row.mwd_tool_family,
+            "grid": row.grid,
+            "datums": row.datums,
+            "formation": row.formation,
+            "mag_field": row.mag_field,
+            "tool_cal": row.tool_cal,
+            "quality_tags": row.quality_tags,
+            "provenance": row.provenance,
+            "active_from": row.active_from
+        }
 
 class InputJSON(BaseModel):
     well_id: str
@@ -76,8 +103,23 @@ def post_input(body: InputJSON):
         # Compute solution row-wise using minimum curvature with previous point (if any)
         prev = s.execute(select(SurveySolution).join(SurveyInput, SurveyInput.id==SurveySolution.input_id)
                          .where(SurveyInput.well_id==body.well_id)
-                         .order_by(SurveySolution.created_at.desc())).scalars().first()
-        flags = verify(ctx.__dict__ if ctx else None, settings.MAG_MODEL_MAX_AGE_DAYS)
+                         .order_by(SurveyInput.md_m.desc())).scalars().first()
+        ctx_dict = None
+        if ctx:
+            ctx_dict = {
+                "id": ctx.id,
+                "well_id": ctx.well_id,
+                "mwd_tool_family": ctx.mwd_tool_family,
+                "grid": ctx.grid,
+                "datums": ctx.datums,
+                "formation": ctx.formation,
+                "mag_field": ctx.mag_field,
+                "tool_cal": ctx.tool_cal,
+                "quality_tags": ctx.quality_tags,
+                "provenance": ctx.provenance,
+                "active_from": ctx.active_from
+            }
+        flags = verify(ctx_dict, settings.MAG_MODEL_MAX_AGE_DAYS)
         inc, azi = (body.inc_deg or 0.0), (body.azi_deg or 0.0)
         if prev:
             # need previous input/solution to compute step — fetch last input/solution pair
@@ -118,7 +160,7 @@ def list_solutions(wellId: str):
     with SessionLocal() as s:
         rows = s.execute(
             select(SurveySolution, SurveyInput.md_m).join(SurveyInput, SurveyInput.id==SurveySolution.input_id)
-            .where(SurveyInput.well_id==wellId).order_by(SurveySolution.created_at.asc())
+            .where(SurveyInput.well_id==wellId).order_by(SurveyInput.md_m.asc())
         ).all()
         out = []
         for sol, md in rows:
