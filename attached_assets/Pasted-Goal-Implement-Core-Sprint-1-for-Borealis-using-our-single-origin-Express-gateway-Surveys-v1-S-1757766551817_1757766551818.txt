@@ -1,0 +1,88 @@
+Goal: Implement Core Sprint 1 for Borealis using our single-origin Express gateway:
+- Surveys v1: SQLite persistence; context CRUD; CSV or JSON ingest; minimum-curvature trajectory (TVD/NE/DLS).
+- Reports v1: DDR template + prefill from Surveys (depths, simple stats) with preview.
+- UI v1: Two pages (/surveys and /reports) that use gateway paths /api/survey/* and /api/reports/*.
+- Keep services private on 8010/8020; browser only talks to port 5000.
+
+# =========================
+# 1) SURVEY SERVICE (Python)
+# =========================
+Update apps/borealis-survey/pyproject.toml: add SQLAlchemy and python-multipart (for CSV upload)
+[tool.poetry.dependencies]
+# keep existing...
+sqlalchemy = "^2.0.35"
+python-multipart = "^0.0.9"
+
+Create/replace these files:
+
+apps/borealis-survey/borealis_survey/db.py
+"""
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+ENGINE = create_engine("sqlite:///borealis_survey.db", future=True, echo=False)
+SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, autocommit=False, future=True)
+Base = declarative_base()
+"""
+
+apps/borealis-survey/borealis_survey/models.py
+"""
+from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from .db import Base
+
+class SurveyContext(Base):
+    __tablename__ = "brls_survey_context"
+    id = Column(String, primary_key=True)
+    well_id = Column(String, index=True)
+    mwd_tool_family = Column(String, nullable=False, default="Tensor")
+    grid = Column(JSON, nullable=False, default=dict)
+    datums = Column(JSON, nullable=False, default=dict)
+    formation = Column(JSON, nullable=True)
+    mag_field = Column(JSON, nullable=False, default=dict)
+    tool_cal = Column(JSON, nullable=True)
+    quality_tags = Column(JSON, nullable=False, default=list)
+    provenance = Column(JSON, nullable=False, default=dict)
+    active_from = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+class SurveyInput(Base):
+    __tablename__ = "brls_survey_input"
+    id = Column(String, primary_key=True)
+    well_id = Column(String, index=True)
+    time = Column(DateTime, default=datetime.utcnow)
+    md_m = Column(Float, nullable=False)
+    sensors = Column(JSON, nullable=True)  # {Mx,My,Mz,Gx,Gy,Gz,Temp}
+    inc_deg = Column(Float, nullable=True)
+    azi_deg = Column(Float, nullable=True)
+    toolface_deg = Column(Float, nullable=True)
+    run_id = Column(String, nullable=True)
+    context_id = Column(String, ForeignKey("brls_survey_context.id"), nullable=True)
+    source = Column(String, nullable=False, default="Manual")
+    meta = Column(JSON, nullable=True)
+
+class SurveySolution(Base):
+    __tablename__ = "brls_survey_solution"
+    id = Column(String, primary_key=True)
+    input_id = Column(String, ForeignKey("brls_survey_input.id"))
+    context_id = Column(String, ForeignKey("brls_survey_context.id"), nullable=True)
+    inc_deg = Column(Float, nullable=False)
+    azi_deg = Column(Float, nullable=False)
+    tvd_m = Column(Float, nullable=True)
+    northing_m = Column(Float, nullable=True)
+    easting_m = Column(Float, nullable=True)
+    dogleg_deg30m = Column(Float, nullable=True)
+    frame = Column(String, nullable=False, default="LOCAL")
+    quality = Column(Integer, nullable=False, default=1)  # 0 bad,1 suspect,2 good
+    flags = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+"""
+
+apps/borealis-survey/borealis_survey/maths.py
+"""
+import math
+
+def min_curvature(prev_md, prev_inc_deg, prev_azi_deg, md, inc_deg, azi_deg):
+    # returns (dls_deg_per_30m, rf)
+    dmd = md - prev_md
+    if dmd <= 0: retu
