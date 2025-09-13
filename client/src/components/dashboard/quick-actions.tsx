@@ -10,15 +10,24 @@ interface HealthStatus {
   message?: string;
 }
 
-export function QuickActions() {
+interface QuickActionsProps {
+  selectedTenant: string;
+}
+
+export function QuickActions({ selectedTenant }: QuickActionsProps) {
   const { toast } = useToast();
   const [apiHealth, setApiHealth] = useState<HealthStatus>({ status: 'loading' });
   const [surveyHealth, setSurveyHealth] = useState<HealthStatus>({ status: 'loading' });
   const [reportsHealth, setReportsHealth] = useState<HealthStatus>({ status: 'loading' });
 
-  const checkServiceHealth = async (url: string, serviceName: string): Promise<HealthStatus> => {
+  const checkServiceHealth = async (url: string, serviceName: string, includeTenant = false): Promise<HealthStatus> => {
     try {
-      const response = await fetch(`${url}/health`);
+      const headers: HeadersInit = {};
+      if (includeTenant) {
+        headers['x-tenant-id'] = selectedTenant;
+      }
+      
+      const response = await fetch(`${url}/health`, { headers });
       if (response.ok) {
         return { status: 'online', message: 'Service is running' };
       } else {
@@ -34,14 +43,14 @@ export function QuickActions() {
     checkServiceHealth('/api', 'API')
       .then(setApiHealth);
       
-    // Check Survey service health via proxy
-    checkServiceHealth('/api/survey', 'Survey')
+    // Check Survey service health via proxy (requires tenant header)
+    checkServiceHealth('/api/survey', 'Survey', true)
       .then(setSurveyHealth);
       
-    // Check Reports service health via proxy
-    checkServiceHealth('/api/reports', 'Reports')
+    // Check Reports service health via proxy (requires tenant header)
+    checkServiceHealth('/api/reports', 'Reports', true)
       .then(setReportsHealth);
-  }, []);
+  }, [selectedTenant]);
 
   const seedDDRTemplate = async () => {
     try {
@@ -69,7 +78,10 @@ export function QuickActions() {
 
       const response = await fetch(`${reportsBaseUrl}/templates`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-tenant-id': selectedTenant
+        },
         body: JSON.stringify(ddrPayload)
       });
 
@@ -95,7 +107,9 @@ export function QuickActions() {
       const reportsBaseUrl = '/api/reports';
       
       // First, get templates to find DDR template ID
-      const templatesResponse = await fetch(`${reportsBaseUrl}/templates?name=DDR_Template`);
+      const templatesResponse = await fetch(`${reportsBaseUrl}/templates?name=DDR_Template`, {
+        headers: { 'x-tenant-id': selectedTenant }
+      });
       const templates = await templatesResponse.json();
       
       if (!templates.length) {
@@ -125,7 +139,10 @@ export function QuickActions() {
 
       const reportResponse = await fetch(`${reportsBaseUrl}/reports`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-tenant-id': selectedTenant
+        },
         body: JSON.stringify(reportPayload)
       });
 

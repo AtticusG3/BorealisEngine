@@ -36,7 +36,7 @@ export default function Dashboard() {
           <SystemSettings selectedTenant={selectedTenant} />
           
           {/* Quick Actions Panel */}
-          <QuickActions />
+          <QuickActions selectedTenant={selectedTenant} />
           
           {/* API Endpoints Reference */}
           <APIReference />
