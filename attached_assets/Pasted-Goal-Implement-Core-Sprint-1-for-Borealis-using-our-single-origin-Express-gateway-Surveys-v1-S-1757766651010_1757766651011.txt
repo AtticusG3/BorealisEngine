@@ -1,0 +1,616 @@
+Goal: Implement Core Sprint 1 for Borealis using our single-origin Express gateway:
+- Surveys v1: SQLite persistence; context CRUD; CSV or JSON ingest; minimum-curvature trajectory (TVD/NE/DLS).
+- Reports v1: DDR template + prefill from Surveys (depths, simple stats) with preview.
+- UI v1: Two pages (/surveys and /reports) that use gateway paths /api/survey/* and /api/reports/*.
+- Keep services private on 8010/8020; browser only talks to port 5000.
+
+# =========================
+# 1) SURVEY SERVICE (Python)
+# =========================
+Update apps/borealis-survey/pyproject.toml: add SQLAlchemy and python-multipart (for CSV upload)
+[tool.poetry.dependencies]
+# keep existing...
+sqlalchemy = "^2.0.35"
+python-multipart = "^0.0.9"
+
+Create/replace these files:
+
+apps/borealis-survey/borealis_survey/db.py
+"""
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+ENGINE = create_engine("sqlite:///borealis_survey.db", future=True, echo=False)
+SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, autocommit=False, future=True)
+Base = declarative_base()
+"""
+
+apps/borealis-survey/borealis_survey/models.py
+"""
+from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from .db import Base
+
+class SurveyContext(Base):
+    __tablename__ = "brls_survey_context"
+    id = Column(String, primary_key=True)
+    well_id = Column(String, index=True)
+    mwd_tool_family = Column(String, nullable=False, default="Tensor")
+    grid = Column(JSON, nullable=False, default=dict)
+    datums = Column(JSON, nullable=False, default=dict)
+    formation = Column(JSON, nullable=True)
+    mag_field = Column(JSON, nullable=False, default=dict)
+    tool_cal = Column(JSON, nullable=True)
+    quality_tags = Column(JSON, nullable=False, default=list)
+    provenance = Column(JSON, nullable=False, default=dict)
+    active_from = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+class SurveyInput(Base):
+    __tablename__ = "brls_survey_input"
+    id = Column(String, primary_key=True)
+    well_id = Column(String, index=True)
+    time = Column(DateTime, default=datetime.utcnow)
+    md_m = Column(Float, nullable=False)
+    sensors = Column(JSON, nullable=True)  # {Mx,My,Mz,Gx,Gy,Gz,Temp}
+    inc_deg = Column(Float, nullable=True)
+    azi_deg = Column(Float, nullable=True)
+    toolface_deg = Column(Float, nullable=True)
+    run_id = Column(String, nullable=True)
+    context_id = Column(String, ForeignKey("brls_survey_context.id"), nullable=True)
+    source = Column(String, nullable=False, default="Manual")
+    meta = Column(JSON, nullable=True)
+
+class SurveySolution(Base):
+    __tablename__ = "brls_survey_solution"
+    id = Column(String, primary_key=True)
+    input_id = Column(String, ForeignKey("brls_survey_input.id"))
+    context_id = Column(String, ForeignKey("brls_survey_context.id"), nullable=True)
+    inc_deg = Column(Float, nullable=False)
+    azi_deg = Column(Float, nullable=False)
+    tvd_m = Column(Float, nullable=True)
+    northing_m = Column(Float, nullable=True)
+    easting_m = Column(Float, nullable=True)
+    dogleg_deg30m = Column(Float, nullable=True)
+    frame = Column(String, nullable=False, default="LOCAL")
+    quality = Column(Integer, nullable=False, default=1)  # 0 bad,1 suspect,2 good
+    flags = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+"""
+
+apps/borealis-survey/borealis_survey/maths.py
+"""
+import math
+
+def min_curvature(prev_md, prev_inc_deg, prev_azi_deg, md, inc_deg, azi_deg):
+    # returns (dls_deg_per_30m, rf)
+    dmd = md - prev_md
+    if dmd <= 0: return 0.0, 0.0
+    inc1, inc2 = math.radians(prev_inc_deg), math.radians(inc_deg)
+    azi1, azi2 = math.radians(prev_azi_deg), math.radians(azi_deg)
+    cos_dogleg = math.cos(inc2 - inc1) - (math.sin(inc1)*math.sin(inc2)*(1 - math.cos(azi2 - azi1)))
+    cos_dogleg = max(-1.0, min(1.0, cos_dogleg))
+    dogleg = math.acos(cos_dogleg)
+    rf = 1.0 if dogleg < 1e-6 else (2/dogleg) * math.tan(dogleg/2)
+    dls = math.degrees(dogleg) * (30.0 / dmd)
+    return dls, rf
+
+def mc_step(prev_md, prev_inc_deg, prev_azi_deg, prev_n, prev_e, prev_tvd, md, inc_deg, azi_deg):
+    dmd = md - prev_md
+    _, rf = min_curvature(prev_md, prev_inc_deg, prev_azi_deg, md, inc_deg, azi_deg)
+    inc1, inc2 = math.radians(prev_inc_deg), math.radians(inc_deg)
+    azi1, azi2 = math.radians(prev_azi_deg), math.radians(azi_deg)
+    n = prev_n + 0.5 * dmd * (math.sin(inc1)*math.cos(azi1) + math.sin(inc2)*math.cos(azi2)) * rf
+    e = prev_e + 0.5 * dmd * (math.sin(inc1)*math.sin(azi1) + math.sin(inc2)*math.sin(azi2)) * rf
+    tvd = prev_tvd + 0.5 * dmd * (math.cos(inc1) + math.cos(inc2)) * rf
+    return n, e, tvd
+"""
+
+apps/borealis-survey/borealis_survey/verifier.py
+"""
+from datetime import datetime, timedelta
+
+def verify(context: dict | None, max_age_days: int):
+    flags = []
+    if not context:
+        return ["UNVERIFIED", "CONTEXT_FALLBACK"]
+    mag = (context or {}).get("mag_field") or {}
+    mdate = mag.get("model_date")
+    if not mdate:
+        flags.append("MAG_MODEL_MISSING")
+    else:
+        try:
+            dt = datetime.fromisoformat(mdate)
+            if datetime.utcnow() - dt > timedelta(days=max_age_days):
+                flags.append("MAG_MODEL_STALE")
+        except Exception:
+            flags.append("MAG_MODEL_MISSING")
+    grid = (context or {}).get("grid") or {}
+    if "grid" in grid and not grid.get("convergence_deg"):
+        flags.append("GRID_INCOMPLETE")
+    datums = (context or {}).get("datums") or {}
+    if not datums.get("KB"):
+        flags.append("DATUM_INCOMPLETE")
+    return flags
+"""
+
+apps/borealis-survey/borealis_survey/main.py
+"""
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from uuid import uuid4
+from datetime import datetime
+import csv, io
+from sqlalchemy import select
+from .settings import Settings
+from .db import ENGINE, Base, SessionLocal
+from .models import SurveyContext, SurveyInput, SurveySolution
+from .verifier import verify
+from .maths import mc_step, min_curvature
+
+settings = Settings()
+app = FastAPI(title="Borealis Survey")
+
+# Create DB tables
+Base.metadata.create_all(bind=ENGINE)
+
+class ContextModel(BaseModel):
+    well_id: str
+    mwd_tool_family: str = "Tensor"
+    grid: dict = {}
+    datums: dict = {}
+    formation: dict | None = None
+    mag_field: dict = {}
+    tool_cal: dict | None = None
+    provenance: dict = {}
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "borealis-survey"}
+
+@app.post("/surveys/contexts")
+def upsert_context(body: ContextModel):
+    with SessionLocal() as s:
+        ctx = SurveyContext(
+            id=str(uuid4()), well_id=body.well_id,
+            mwd_tool_family=body.mwd_tool_family,
+            grid=body.grid, datums=body.datums,
+            formation=body.formation, mag_field=body.mag_field,
+            tool_cal=body.tool_cal, quality_tags=["UNVERIFIED"], provenance=body.provenance
+        )
+        s.add(ctx); s.commit()
+        return {"id": ctx.id}
+
+@app.get("/surveys/contexts/{well_id}/active")
+def get_context(well_id: str):
+    with SessionLocal() as s:
+        row = s.execute(select(SurveyContext).where(SurveyContext.well_id==well_id).order_by(SurveyContext.active_from.desc())).scalars().first()
+        return row.__dict__ if row else None
+
+class InputJSON(BaseModel):
+    well_id: str
+    md_m: float
+    inc_deg: float | None = None
+    azi_deg: float | None = None
+    sensors: dict | None = None
+    run_id: str | None = None
+    source: str = "Manual"
+
+@app.post("/surveys/inputs")
+def post_input(body: InputJSON):
+    with SessionLocal() as s:
+        ctx = s.execute(select(SurveyContext).where(SurveyContext.well_id==body.well_id).order_by(SurveyContext.active_from.desc())).scalars().first()
+        inp = SurveyInput(
+            id=str(uuid4()), well_id=body.well_id, md_m=body.md_m,
+            sensors=body.sensors, inc_deg=body.inc_deg, azi_deg=body.azi_deg,
+            run_id=body.run_id, context_id=ctx.id if ctx else None,
+            source=body.source
+        )
+        s.add(inp); s.commit()
+        # Compute solution row-wise using minimum curvature with previous point (if any)
+        prev = s.execute(select(SurveySolution).join(SurveyInput, SurveyInput.id==SurveySolution.input_id)
+                         .where(SurveyInput.well_id==body.well_id)
+                         .order_by(SurveySolution.created_at.desc())).scalars().first()
+        flags = verify(ctx.__dict__ if ctx else None, settings.MAG_MODEL_MAX_AGE_DAYS)
+        inc, azi = (body.inc_deg or 0.0), (body.azi_deg or 0.0)
+        if prev:
+            # need previous input/solution to compute step — fetch last input/solution pair
+            prev_input = s.execute(select(SurveyInput).where(SurveyInput.id==prev.input_id)).scalars().first()
+            n,e,tvd = mc_step(prev_input.md_m, prev.inc_deg, prev.azi_deg, prev.northing_m or 0.0, prev.easting_m or 0.0, prev.tvd_m or 0.0, body.md_m, inc, azi)
+            dls,_ = min_curvature(prev_input.md_m, prev.inc_deg, prev.azi_deg, body.md_m, inc, azi)
+        else:
+            n,e,tvd = 0.0,0.0,0.0
+            dls = 0.0
+        sol = SurveySolution(
+            id=str(uuid4()), input_id=inp.id, context_id=ctx.id if ctx else None,
+            inc_deg=inc, azi_deg=azi, tvd_m=tvd, northing_m=n, easting_m=e, dogleg_deg30m=dls,
+            frame="LOCAL", quality=2 if not flags else 1, flags=flags
+        )
+        s.add(sol); s.commit()
+        return {"input_id": inp.id, "solution_id": sol.id, "flags": flags}
+
+@app.post("/surveys/inputs/csv")
+async def post_input_csv(well_id: str = Form(...), file: UploadFile = File(...)):
+    data = await file.read()
+    text = data.decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(text))
+    inserted = 0
+    for row in reader:
+        body = InputJSON(
+            well_id=well_id,
+            md_m=float(row.get("MD") or row.get("md") or row.get("md_m")),
+            inc_deg=float(row.get("INC") or row.get("inc_deg") or 0),
+            azi_deg=float(row.get("AZI") or row.get("azi_deg") or 0),
+            sensors=None, source="CSV"
+        )
+        post_input(body)  # reuse logic
+        inserted += 1
+    return {"rows": inserted}
+
+@app.get("/surveys/solutions")
+def list_solutions(wellId: str):
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(SurveySolution, SurveyInput.md_m).join(SurveyInput, SurveyInput.id==SurveySolution.input_id)
+            .where(SurveyInput.well_id==wellId).order_by(SurveySolution.created_at.asc())
+        ).all()
+        out = []
+        for sol, md in rows:
+            out.append({
+                "id": sol.id, "md_m": md, "inc_deg": sol.inc_deg, "azi_deg": sol.azi_deg,
+                "tvd_m": sol.tvd_m, "n": sol.northing_m, "e": sol.easting_m, "dls_deg30m": sol.dogleg_deg30m,
+                "flags": sol.flags, "frame": sol.frame
+            })
+        return out
+"""
+
+apps/borealis-survey/borealis_survey/settings.py
+"""
+from pydantic_settings import BaseSettings
+class Settings(BaseSettings):
+    APP_NAME: str = "Borealis Survey"
+    MAG_MODEL_MAX_AGE_DAYS: int = 30
+"""
+
+# ==========================
+# 2) REPORTS SERVICE (Python)
+# ==========================
+Update apps/borealis-reports/pyproject.toml: add httpx
+[tool.poetry.dependencies]
+# keep existing...
+httpx = "^0.27.2"
+
+Create/replace:
+
+apps/borealis-reports/borealis_reports/prefill.py
+"""
+import httpx, os, datetime
+
+SURVEY_URL = os.getenv("SURVEY_URL", "http://127.0.0.1:8010")
+
+async def ddr_prefill(well_id: str):
+    # Pull solutions from Survey service
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.get(f"{SURVEY_URL}/surveys/solutions", params={"wellId": well_id})
+        r.raise_for_status()
+        sols = r.json()
+    if not sols:
+        return {"depth_start_m": 0, "depth_end_m": 0, "on_bottom_hours": 0, "pump_rate_avg_lpm": 0}
+    depth_start = sols[0]["md_m"]
+    depth_end = sols[-1]["md_m"]
+    # crude placeholder stats
+    pump_rate_avg = 0
+    on_bottom_hours = 0
+    return {
+        "date": datetime.date.today().isoformat(),
+        "depth_start_m": depth_start,
+        "depth_end_m": depth_end,
+        "pump_rate_avg_lpm": pump_rate_avg,
+        "on_bottom_hours": on_bottom_hours
+    }
+"""
+
+apps/borealis-reports/borealis_reports/main.py  (replace with)
+"""
+from fastapi import FastAPI, Body
+from pydantic import BaseModel
+from uuid import uuid4
+from .render import render_html
+from .store import templates, reports
+from .prefill import ddr_prefill
+
+app = FastAPI(title="Borealis Reports")
+
+@app.get("/health")
+def health():
+    return {"status":"ok","service":"borealis-reports"}
+
+class TemplateIn(BaseModel):
+    name: str
+    version: str
+    scope: str
+    engine: str = "jinja-html"
+    fields_json: dict
+    content: str
+
+@app.post("/templates")
+def create_template(t: TemplateIn):
+    tid = str(uuid4())
+    templates[tid] = {**t.model_dump(), "id": tid}
+    return {"id": tid}
+
+@app.get("/templates")
+def list_templates(scope: str | None = None, name: str | None = None):
+    vals = list(templates.values())
+    if scope: vals = [v for v in vals if v["scope"] == scope]
+    if name: vals = [v for v in vals if v["name"] == name]
+    return vals
+
+@app.post("/reports/{template_id}/prefill")
+async def prefill(template_id: str, wellId: str | None = None, rigId: str | None = None, bhaId: str | None = None):
+    tpl = templates.get(template_id)
+    if not tpl:
+        return {"error":"template_not_found"}
+    defaults = {}
+    if tpl["name"].lower().find("ddr") >= 0 and wellId:
+        defaults = await ddr_prefill(wellId)
+    return {"fields": defaults}
+
+class ReportIn(BaseModel):
+    templateId: str
+    fields: dict
+
+@app.post("/reports")
+def create_report(body: ReportIn):
+    rid = str(uuid4())
+    reports[rid] = {"id": rid, "templateId": body.templateId, "fields": body.fields}
+    return {"id": rid}
+
+@app.get("/reports/{rid}/preview")
+def preview(rid: str):
+    r = reports.get(rid)
+    if not r: return {"error":"not_found"}
+    t = templates.get(r["templateId"])
+    if not t: return {"error":"template_not_found"}
+    html = render_html(t["content"], r["fields"])
+    return html
+"""
+
+apps/borealis-reports/borealis_reports/store.py
+"""
+templates = {}
+reports = {}
+"""
+
+apps/borealis-reports/borealis_reports/render.py
+"""
+from jinja2 import Environment, BaseLoader, select_autoescape
+
+env = Environment(
+    loader=BaseLoader(),
+    autoescape=select_autoescape(enabled_extensions=("html","xml"), default_for_string=True)
+)
+
+def render_html(content: str, fields: dict) -> str:
+    tpl = env.from_string(content)
+    return tpl.render(fields=fields)
+"""
+
+Seed an example DDR template (simple HTML):
+
+Add to apps/borealis-reports/README.md (append steps):
+"""
+## Seed DDR Template
+POST /templates with:
+{
+  "name":"Borealis DDR",
+  "version":"0.1.0",
+  "scope":"company:demo",
+  "engine":"jinja-html",
+  "fields_json": {
+    "type":"object","properties":{
+      "date":{"type":"string"},
+      "rig":{"type":"string"},
+      "well":{"type":"string"},
+      "depth_start_m":{"type":"number"},
+      "depth_end_m":{"type":"number"},
+      "on_bottom_hours":{"type":"number"},
+      "pump_rate_avg_lpm":{"type":"number"}
+    }
+  },
+  "content":"<html><body><h1>DDR - {{ fields.date }}</h1><p>Rig: {{ fields.rig }}</p><p>Well: {{ fields.well }}</p><p>Depth: {{ fields.depth_start_m }} → {{ fields.depth_end_m }} m</p><p>On-bottom: {{ fields.on_bottom_hours }} h</p><p>Pump rate avg: {{ fields.pump_rate_avg_lpm }} lpm</p></body></html>"
+}
+"""
+
+# ======================
+# 3) UI PAGES (Next.js)
+# ======================
+Create two pages and a tiny helper.
+
+apps/borealis-ui/src/app/surveys/page.tsx
+"""
+"use client";
+import { useEffect, useState } from "react";
+
+export default function SurveysPage() {
+  const [wellId, setWellId] = useState("well-001");
+  const [contextId, setContextId] = useState<string|undefined>();
+  const [solutions, setSolutions] = useState<any[]>([]);
+  const [md, setMd] = useState<string>("");
+  const [inc, setInc] = useState<string>("");
+  const [azi, setAzi] = useState<string>("");
+
+  const loadContext = async () => {
+    const r = await fetch(`/api/survey/surveys/contexts/${wellId}/active`);
+    const j = await r.json(); setContextId(j?.id);
+  };
+
+  const loadSolutions = async () => {
+    const r = await fetch(`/api/survey/surveys/solutions?wellId=${encodeURIComponent(wellId)}`);
+    const j = await r.json(); setSolutions(j);
+  };
+
+  useEffect(() => { loadContext(); loadSolutions(); }, []);
+
+  const saveContext = async () => {
+    const body = {
+      well_id: wellId,
+      mwd_tool_family: "Tensor",
+      grid: {"grid":"LOCAL","convergence_deg":0},
+      datums: {"KB":{"elevation_m":0,"source":"manual"}},
+      mag_field: {"source":"BGGM","model_date":"2025-09-01"}
+    };
+    await fetch(`/api/survey/surveys/contexts`, {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body)});
+    await loadContext();
+  };
+
+  const addPoint = async () => {
+    const body = { well_id: wellId, md_m: parseFloat(md), inc_deg: parseFloat(inc), azi_deg: parseFloat(azi), source:"Manual" };
+    await fetch(`/api/survey/surveys/inputs`, { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body) });
+    setMd(""); setInc(""); setAzi("");
+    await loadSolutions();
+  };
+
+  const uploadCSV = async (file: File) => {
+    const form = new FormData();
+    form.append("well_id", wellId);
+    form.append("file", file);
+    await fetch(`/api/survey/surveys/inputs/csv`, { method:"POST", body: form });
+    await loadSolutions();
+  };
+
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>Surveys</h1>
+      <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+        <label>Well ID: <input value={wellId} onChange={e=>setWellId(e.target.value)} /></label>
+        <button onClick={saveContext}>Save/Update Context</button>
+        <span>Context: <b>{contextId || "none"}</b></span>
+      </div>
+
+      <h3 style={{ marginTop: 24 }}>Add survey point</h3>
+      <div style={{ display:"flex", gap:8 }}>
+        <input placeholder="MD (m)" value={md} onChange={e=>setMd(e.target.value)} />
+        <input placeholder="Inc (deg)" value={inc} onChange={e=>setInc(e.target.value)} />
+        <input placeholder="Azi (deg)" value={azi} onChange={e=>setAzi(e.target.value)} />
+        <button onClick={addPoint}>Add</button>
+        <input type="file" accept=".csv" onChange={e=> e.target.files && uploadCSV(e.target.files[0]) } />
+      </div>
+
+      <h3 style={{ marginTop: 24 }}>Solutions</h3>
+      <table cellPadding={6} style={{ borderCollapse:"collapse" }}>
+        <thead><tr><th>MD</th><th>Inc</th><th>Azi</th><th>TVD</th><th>N</th><th>E</th><th>DLS/30m</th><th>Flags</th></tr></thead>
+        <tbody>
+          {solutions.map((s:any)=>(
+            <tr key={s.id}>
+              <td>{s.md_m?.toFixed?.(2)}</td>
+              <td>{s.inc_deg?.toFixed?.(2)}</td>
+              <td>{s.azi_deg?.toFixed?.(2)}</td>
+              <td>{s.tvd_m?.toFixed?.(2)}</td>
+              <td>{s.n?.toFixed?.(2)}</td>
+              <td>{s.e?.toFixed?.(2)}</td>
+              <td>{s.dls_deg30m?.toFixed?.(2)}</td>
+              <td>{(s.flags||[]).join(",")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </main>
+  );
+}
+"""
+
+apps/borealis-ui/src/app/reports/page.tsx
+"""
+"use client";
+import { useEffect, useState } from "react";
+
+export default function ReportsPage() {
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [wellId, setWellId] = useState("well-001");
+  const [rig, setRig] = useState("Ensign 958");
+  const [well, setWell] = useState("MR199L WB01B01");
+  const [templateId, setTemplateId] = useState<string>("");
+
+  const loadTemplates = async () => {
+    const r = await fetch(`/api/reports/templates`);
+    const j = await r.json(); setTemplates(j); if (j[0]) setTemplateId(j[0].id);
+  };
+  useEffect(()=>{ loadTemplates(); }, []);
+
+  const seedDDR = async () => {
+    await fetch(`/api/reports/templates`, {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body: JSON.stringify({
+        name:"Borealis DDR",
+        version:"0.1.0",
+        scope:"company:demo",
+        engine:"jinja-html",
+        fields_json:{},
+        content:"<html><body><h1>DDR - {{ fields.date }}</h1><p>Rig: {{ fields.rig }}</p><p>Well: {{ fields.well }}</p><p>Depth: {{ fields.depth_start_m }} → {{ fields.depth_end_m }} m</p><p>On-bottom: {{ fields.on_bottom_hours }} h</p><p>Pump rate avg: {{ fields.pump_rate_avg_lpm }} lpm</p></body></html>"
+      })
+    });
+    await loadTemplates();
+  };
+
+  const prefill = async () => {
+    if (!templateId) return;
+    const r = await fetch(`/api/reports/reports/${templateId}/prefill?wellId=${encodeURIComponent(wellId)}`, { method:"POST" });
+    const j = await r.json();
+    const fields = { rig, well, ...(j.fields||{}) };
+    const r2 = await fetch(`/api/reports/reports`, {
+      method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ templateId, fields })
+    });
+    const { id } = await r2.json();
+    window.open(`/api/reports/reports/${id}/preview`, "_blank");
+  };
+
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>Reports</h1>
+      <div style={{ display:"flex", gap:12 }}>
+        <button onClick={seedDDR}>Seed DDR Template</button>
+        <select value={templateId} onChange={e=>setTemplateId(e.target.value)}>
+          <option value="">Select template…</option>
+          {templates.map(t => <option key={t.id} value={t.id}>{t.name} v{t.version}</option>)}
+        </select>
+      </div>
+      <div style={{ marginTop: 16, display:"flex", gap:12 }}>
+        <label>Well ID <input value={wellId} onChange={e=>setWellId(e.target.value)} /></label>
+        <label>Rig <input value={rig} onChange={e=>setRig(e.target.value)} /></label>
+        <label>Well <input value={well} onChange={e=>setWell(e.target.value)} /></label>
+        <button onClick={prefill}>Prefill & Preview</button>
+      </div>
+    </main>
+  );
+}
+"""
+
+Add simple links from the home page:
+
+apps/borealis-ui/src/app/page.tsx (append under existing content)
+"""
+      <div style={{ marginTop: 16, display: "flex", gap: 16 }}>
+        <a href="/surveys">Open Surveys</a>
+        <a href="/reports">Open Reports</a>
+      </div>
+"""
+
+# ============================
+# 4) GATEWAY & RUN INSTRUCTIONS
+# ============================
+No code changes required; our UI calls /api/survey/* and /api/reports/*.
+
+Run services:
+- Survey:  cd apps/borealis-survey  && python -m venv .venv && source .venv/bin/activate && pip install poetry && poetry install && uvicorn borealis_survey.main:app --reload --host 127.0.0.1 --port 8010
+- Reports: cd apps/borealis-reports && python -m venv .venv && source .venv/bin/activate && pip install poetry && poetry install && uvicorn borealis_reports.main:app --reload --host 127.0.0.1 --port 8020
+- Gateway: cd apps/borealis-gateway && cp .env.example .env && npm i && npm run dev
+- UI:      cd apps/borealis-ui && pnpm i && pnpm dev
+
+Navigate to:
+- http://localhost:5000/health   (gateway + fan-in)
+- http://localhost:3000/surveys  (context, add points, CSV upload headers: MD,INC,AZI)
+- http://localhost:3000/reports  (seed DDR, prefill from survey solutions, preview)
