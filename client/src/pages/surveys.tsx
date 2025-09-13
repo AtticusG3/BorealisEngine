@@ -194,7 +194,7 @@ export default function Surveys() {
                   <SelectValue placeholder="Choose a well" />
                 </SelectTrigger>
                 <SelectContent>
-                  {wells?.map((well: any) => (
+                  {Array.isArray(wells) && wells.map((well: any) => (
                     <SelectItem key={well.id} value={well.id}>
                       {well.name} - {well.status}
                     </SelectItem>
@@ -202,16 +202,16 @@ export default function Surveys() {
                 </SelectContent>
               </Select>
             </div>
-            {activeContext && (
+            {activeContext ? (
               <div>
                 <Label>Active Survey Context</Label>
                 <div className="mt-1">
                   <Badge variant="secondary" data-testid="text-context-name">
-                    {activeContext.name}
+                    {String((activeContext as any)?.name) || 'Active Context'}
                   </Badge>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -408,7 +408,7 @@ export default function Surveys() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2" data-testid="list-contexts">
-                  {contexts?.map((context: SurveyContext) => (
+                  {Array.isArray(contexts) && contexts.map((context: SurveyContext) => (
                     <div key={context.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">{context.name}</p>

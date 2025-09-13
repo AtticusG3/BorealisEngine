@@ -55,7 +55,7 @@ export default function Reports() {
     queryKey: ["/api/reports/templates"],
   });
   
-  const templates = templatesData?.templates || [];
+  const templates = Array.isArray((templatesData as any)?.templates) ? (templatesData as any).templates : [];
 
   // Fetch reports
   const { data: reports = [] } = useQuery({
@@ -170,7 +170,7 @@ export default function Reports() {
                       <SelectValue placeholder="Choose template" />
                     </SelectTrigger>
                     <SelectContent>
-                      {templates?.map((template: ReportTemplate) => (
+                      {Array.isArray(templates) && templates.map((template: ReportTemplate) => (
                         <SelectItem key={template.id} value={template.id}>
                           {template.name} v{template.version}
                         </SelectItem>
@@ -185,8 +185,8 @@ export default function Reports() {
                       <SelectValue placeholder="Choose well" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No selection</SelectItem>
-                      {wells?.map((well: any) => (
+                      <SelectItem value="none">No selection</SelectItem>
+                      {Array.isArray(wells) && wells.map((well: any) => (
                         <SelectItem key={well.id} value={well.id}>
                           {well.name}
                         </SelectItem>
@@ -201,8 +201,8 @@ export default function Reports() {
                       <SelectValue placeholder="Choose rig" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No selection</SelectItem>
-                      {rigs?.map((rig: any) => (
+                      <SelectItem value="none">No selection</SelectItem>
+                      {Array.isArray(rigs) && rigs.map((rig: any) => (
                         <SelectItem key={rig.id} value={rig.id}>
                           {rig.name}
                         </SelectItem>
@@ -355,7 +355,7 @@ export default function Reports() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4" data-testid="list-reports">
-                {reports?.map((report: Report) => (
+                {Array.isArray(reports) && reports.map((report: Report) => (
                   <div key={report.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">

@@ -107,11 +107,11 @@ const startPythonServices = async () => {
       log(`[Survey ERROR] ${data.toString().trim()}`);
     });
 
-    surveyProcess.on('error', (error) => {
+    surveyProcess.on('error', (error: any) => {
       log(`[Survey Process Error] ${error.message}`);
     });
 
-    surveyProcess.on('exit', (code, signal) => {
+    surveyProcess.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
       log(`[Survey] Process exited with code ${code} and signal ${signal}`);
     });
 
@@ -138,11 +138,11 @@ const startPythonServices = async () => {
       log(`[Reports ERROR] ${data.toString().trim()}`);
     });
 
-    reportsProcess.on('error', (error) => {
+    reportsProcess.on('error', (error: any) => {
       log(`[Reports Process Error] ${error.message}`);
     });
 
-    reportsProcess.on('exit', (code, signal) => {
+    reportsProcess.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
       log(`[Reports] Process exited with code ${code} and signal ${signal}`);
     });
 
