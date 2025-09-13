@@ -11,6 +11,7 @@ from datetime import datetime
 from .settings import settings
 from .store import store_template, get_template, list_templates, store_report, get_report
 from .render import render
+from .prefill import ddr_prefill
 
 
 app = FastAPI(title=settings.APP_NAME, version="0.1.0")
@@ -104,71 +105,45 @@ async def prefill_report_fields(
         # Start with template fields structure
         fields_json = template["fields_json"].copy()
         
-        # Add stub defaults based on context
-        stub_defaults = {
-            "depth_start_m": 100,
-            "depth_end_m": 120,
+        # Use DDR prefill functionality if wellId is provided
+        if wellId and template["name"] == "DDR_Template":
+            try:
+                ddr_data = await ddr_prefill(wellId)
+                # Merge DDR data with template fields
+                for key, value in ddr_data.items():
+                    if key in fields_json:
+                        fields_json[key] = value
+            except Exception as e:
+                print(f"DDR prefill failed: {e}, using defaults")
+        
+        # Add context-specific defaults
+        defaults = {
             "date": datetime.utcnow().strftime("%Y-%m-%d"),
             "timestamp": datetime.utcnow().isoformat(),
         }
         
         # Add context-specific defaults with proper field name mapping
         if wellId:
-            stub_defaults["well_id"] = wellId
-            stub_defaults["well_name"] = f"Well {wellId}"
+            defaults["well_id"] = wellId
+            defaults["well_name"] = f"Well {wellId}"
             # Map to common template field names
             if "well" in fields_json:
-                stub_defaults["well"] = f"Well {wellId}"
+                defaults["well"] = f"Well {wellId}"
             
         if rigId:
-            stub_defaults["rig_id"] = rigId
-            stub_defaults["rig_name"] = f"Rig {rigId}"
+            defaults["rig_id"] = rigId
+            defaults["rig_name"] = f"Rig {rigId}"
             # Map to common template field names
             if "rig" in fields_json:
-                stub_defaults["rig"] = f"Rig {rigId}"
-            
-        if bhaId:
-            stub_defaults["bha_id"] = bhaId
-            stub_defaults["bha_name"] = f"BHA {bhaId}"
-            # Map to common template field names
-            if "bha" in fields_json:
-                stub_defaults["bha"] = f"BHA {bhaId}"
+                defaults["rig"] = f"Rig {rigId}"
         
-        # Merge stub defaults with existing field values
-        # Include context metadata and only override empty/null values for existing keys
-        for key, value in stub_defaults.items():
+        # Merge defaults with existing field values (only override empty/null values)
+        for key, value in defaults.items():
             if key in fields_json:
-                # Only override if the existing value is empty/null/zero
                 if fields_json[key] in (None, "", 0):
                     fields_json[key] = value
             else:
-                # Add new context keys (well_id, rig_id, etc.) that aren't in template
                 fields_json[key] = value
-        
-        # Also map common ID/name field variations if they exist in template
-        if wellId:
-            for field_name in ["well_name", "well_id"]:
-                if field_name in fields_json and fields_json[field_name] in (None, "", 0):
-                    if field_name.endswith("_name"):
-                        fields_json[field_name] = f"Well {wellId}"
-                    else:
-                        fields_json[field_name] = wellId
-                        
-        if rigId:
-            for field_name in ["rig_name", "rig_id"]:
-                if field_name in fields_json and fields_json[field_name] in (None, "", 0):
-                    if field_name.endswith("_name"):
-                        fields_json[field_name] = f"Rig {rigId}"
-                    else:
-                        fields_json[field_name] = rigId
-                        
-        if bhaId:
-            for field_name in ["bha_name", "bha_id"]:
-                if field_name in fields_json and fields_json[field_name] in (None, "", 0):
-                    if field_name.endswith("_name"):
-                        fields_json[field_name] = f"BHA {bhaId}"
-                    else:
-                        fields_json[field_name] = bhaId
         
         return PrefillResponse(fields_json=fields_json)
         
