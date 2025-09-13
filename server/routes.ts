@@ -190,14 +190,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const well = await storage.createWell({ ...data, tenant: req.tenant });
 
       // Bootstrap logic: Auto-create SurveySettings with declination computation
-      if (well.surfaceLatitude != null && well.surfaceLongitude != null) {
+      if (well.surfaceLat != null && well.surfaceLon != null) {
         try {
           // Prepare declination request
           const declinationRequest: DeclinationRequest = {
-            latitude: well.surfaceLatitude,
-            longitude: well.surfaceLongitude,
+            latitude: well.surfaceLat,
+            longitude: well.surfaceLon,
             date: new Date(), // Use current date for declination calculation
-            elevation: well.surfaceElevation || 0
+            elevation: 0 // Default elevation since surfaceElevation not in schema
           };
 
           // Validate declination request
@@ -208,8 +208,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Try lookup table first for common drilling regions (faster)
           let declinationResult = getDeclinationFromLookup(
-            well.surfaceLatitude,
-            well.surfaceLongitude,
+            well.surfaceLat,
+            well.surfaceLon,
             new Date()
           );
           let isLookupResult = declinationResult !== null;
@@ -219,16 +219,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             declinationResult = calculateMagneticDeclination(declinationRequest);
           }
 
-          // Create default survey settings with computed declination
+          // Map declination model to schema enum values
+          const mapModelToEnum = (model: string): 'WMM' | 'IGRF' | 'MANUAL' => {
+            if (model.includes('WMM')) return 'WMM';
+            if (model.includes('IGRF')) return 'IGRF';
+            return 'MANUAL';
+          };
+
+          // Create default survey settings with computed declination (matching schema)
           const surveySettingsData = {
             wellId: well.id,
-            mwdToolFamily: "Tensor", // Default tool family
-            declination: declinationResult.declination,
-            gridConvergence: 0, // Default, should be computed from CRS if available
-            totalCorrection: declinationResult.declination, // Declination only for now
-            declinationSource: isLookupResult ? 'LOOKUP' as const : 'CALCULATED' as const,
+            declinationDeg: declinationResult.declination,
             declinationDate: declinationResult.calculationDate,
-            magneticModel: declinationResult.model
+            declinationSource: mapModelToEnum(declinationResult.model),
+            applySag: false,
+            applyMSA: false,
+            comments: `Auto-generated: ${declinationResult.source} (${declinationResult.model})`
           };
 
           // Validate survey settings before storage (align with other routes pattern)

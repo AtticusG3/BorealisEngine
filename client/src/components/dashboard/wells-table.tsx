@@ -4,13 +4,14 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight, Play, Pencil, Eye } from "lucide-react";
 
 interface WellsTableProps {
   selectedTenant: string;
+  onEditWell?: (wellId: string) => void;
 }
 
-export function WellsTable({ selectedTenant }: WellsTableProps) {
+export function WellsTable({ selectedTenant, onEditWell }: WellsTableProps) {
   const { data: wells = [] } = useQuery({
     queryKey: ["wells", selectedTenant],
     queryFn: () => api.wells.list(selectedTenant),
@@ -44,6 +45,9 @@ export function WellsTable({ selectedTenant }: WellsTableProps) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Progress
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -65,6 +69,18 @@ export function WellsTable({ selectedTenant }: WellsTableProps) {
                     <div className="flex items-center">
                       <Progress value={well.progress} className="w-full mr-3 h-2" />
                       <span className="text-sm text-muted-foreground">{well.progress}%</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => well.id && onEditWell?.(well.id)}
+                        data-testid={`button-edit-well-${well.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                     </div>
                   </td>
                 </tr>
