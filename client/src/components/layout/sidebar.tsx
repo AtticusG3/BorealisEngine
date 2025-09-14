@@ -1,4 +1,4 @@
-import { Compass, Gauge, Droplets, Building2, Route, Wrench, TrendingUp, Bell, FileText, RefreshCw, Settings } from "lucide-react";
+import { Compass, Gauge, Droplets, Building2, Route, Wrench, TrendingUp, Bell, FileText, RefreshCw, Settings, Building } from "lucide-react";
 import { TenantSwitcher } from "@/components/ui/tenant-switcher";
 import { Link } from "wouter";
 
@@ -67,6 +67,24 @@ export function Sidebar({ selectedTenant, onTenantChange }: SidebarProps) {
         <Link href="/sync" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-sync">
           <RefreshCw className="mr-3 w-5 h-5" />
           Cloud Sync
+        </Link>
+        
+        {/* Admin Section */}
+        <hr className="my-4 border-border" />
+        <div className="px-3 pb-2">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Administration
+          </div>
+        </div>
+        
+        <Link href="/companies" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-companies">
+          <Building className="mr-3 w-5 h-5" />
+          Companies
+        </Link>
+        
+        <Link href="/admin/rigs" className="flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors" data-testid="link-admin-rigs">
+          <Settings className="mr-3 w-5 h-5" />
+          Rig Inventory
         </Link>
         
         <hr className="my-4 border-border" />

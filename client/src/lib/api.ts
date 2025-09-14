@@ -37,6 +37,53 @@ export const api = {
       const res = await fetch(`${BASE_URL}/companies/${id}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch company");
       return res.json();
+    },
+
+    create: async (data: any, tenantId?: string): Promise<Company> => {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/companies`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(data),
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to create company");
+      return res.json();
+    },
+
+    update: async (id: string, data: any, tenantId?: string): Promise<Company> => {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/companies/${id}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(data),
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to update company");
+      return res.json();
+    },
+
+    delete: async (id: string, tenantId?: string): Promise<void> => {
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/companies/${id}`, {
+        method: "DELETE",
+        headers,
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to delete company");
     }
   },
   
@@ -54,6 +101,53 @@ export const api = {
     get: async (id: string): Promise<Rig> => {
       const res = await apiRequest("GET", `${BASE_URL}/rigs/${id}`);
       return res.json();
+    },
+
+    create: async (data: any, tenantId?: string): Promise<Rig> => {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/rigs`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(data),
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to create rig");
+      return res.json();
+    },
+
+    update: async (id: string, data: any, tenantId?: string): Promise<Rig> => {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/rigs/${id}`, {
+        method: "PUT", 
+        headers,
+        body: JSON.stringify(data),
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to update rig");
+      return res.json();
+    },
+
+    delete: async (id: string, tenantId?: string): Promise<void> => {
+      const headers: Record<string, string> = {};
+      if (tenantId) {
+        headers["x-tenant-id"] = tenantId;
+      }
+      const res = await fetch(`${BASE_URL}/rigs/${id}`, {
+        method: "DELETE",
+        headers,
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to delete rig");
     }
   },
   

@@ -122,7 +122,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/rigs", requireTenant, async (req, res) => {
     try {
       const data = insertRigSchema.parse(req.body);
-      const rig = await storage.createRig({ ...data, tenant: req.tenant });
+      const rigData = { ...data, tenant: req.tenant };
+      const rig = await storage.createRig(rigData);
       res.status(201).json(rig);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -135,7 +136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/rigs/:id", requireTenant, async (req, res) => {
     try {
       const data = insertRigSchema.parse(req.body);
-      const rig = await storage.updateRig(req.params.id, { ...data, tenant: req.tenant }, req.tenant);
+      const rig = await storage.updateRig(req.params.id, data, req.tenant);
       if (!rig) {
         return res.status(404).json({ error: "Rig not found" });
       }
@@ -350,7 +351,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/companies", requireTenant, async (req, res) => {
     try {
       const data = insertCompanySchema.parse(req.body);
-      const company = await storage.createCompany({ ...data, tenant: req.tenant });
+      const companyData = { ...data, tenant: req.tenant };
+      const company = await storage.createCompany(companyData);
       res.status(201).json(company);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -363,7 +365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/companies/:id", requireTenant, async (req, res) => {
     try {
       const data = insertCompanySchema.parse(req.body);
-      const company = await storage.updateCompany(req.params.id, { ...data, tenant: req.tenant }, req.tenant);
+      const company = await storage.updateCompany(req.params.id, data, req.tenant);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
