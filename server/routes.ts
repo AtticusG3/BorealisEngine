@@ -122,13 +122,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/rigs", requireTenant, async (req, res) => {
     try {
       const data = insertRigSchema.parse(req.body);
-      const rigData = { ...data, tenant: req.tenant };
-      const rig = await storage.createRig(rigData);
+      // Sanitize optional fields - convert empty strings and "none" to null
+      const cleanData = {
+        ...data,
+        contractorCompanyId: data.contractorCompanyId === '' || data.contractorCompanyId === 'none' ? null : data.contractorCompanyId,
+        number: data.number === '' ? null : data.number,
+        derrickRating: data.derrickRating === '' || data.derrickRating === null ? null : data.derrickRating,
+        topDriveModel: data.topDriveModel === '' ? null : data.topDriveModel,
+        tenant: req.tenant
+      };
+      const rig = await storage.createRig(cleanData);
       res.status(201).json(rig);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
       }
+      console.error('Failed to create rig:', error);
       res.status(500).json({ error: "Failed to create rig" });
     }
   });
@@ -136,7 +145,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/rigs/:id", requireTenant, async (req, res) => {
     try {
       const data = insertRigSchema.parse(req.body);
-      const rig = await storage.updateRig(req.params.id, data, req.tenant);
+      // Sanitize optional fields - convert empty strings and "none" to null
+      const cleanData = {
+        ...data,
+        contractorCompanyId: data.contractorCompanyId === '' || data.contractorCompanyId === 'none' ? null : data.contractorCompanyId,
+        number: data.number === '' ? null : data.number,
+        derrickRating: data.derrickRating === '' || data.derrickRating === null ? null : data.derrickRating,
+        topDriveModel: data.topDriveModel === '' ? null : data.topDriveModel
+      };
+      const rig = await storage.updateRig(req.params.id, req.tenant, cleanData);
       if (!rig) {
         return res.status(404).json({ error: "Rig not found" });
       }
@@ -365,7 +382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/companies/:id", requireTenant, async (req, res) => {
     try {
       const data = insertCompanySchema.parse(req.body);
-      const company = await storage.updateCompany(req.params.id, data, req.tenant);
+      const company = await storage.updateCompany(req.params.id, req.tenant, data);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
