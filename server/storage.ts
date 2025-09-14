@@ -172,7 +172,12 @@ export class PostgresStorage implements IStorage {
   }
 
   async createRig(insertRig: InsertRig): Promise<Rig> {
-    const result = await this.db.insert(rigs).values(insertRig).returning();
+    // CRITICAL FIX: Generate UUID if missing due to schema drift
+    const rigData = {
+      id: randomUUID(),
+      ...insertRig
+    };
+    const result = await this.db.insert(rigs).values(rigData).returning();
     return result[0];
   }
 
@@ -230,7 +235,12 @@ export class PostgresStorage implements IStorage {
   }
 
   async createCompany(insertCompany: InsertCompany): Promise<Company> {
-    const result = await this.db.insert(companies).values(insertCompany).returning();
+    // CRITICAL FIX: Generate UUID if missing due to schema drift
+    const companyData = {
+      id: randomUUID(),
+      ...insertCompany
+    };
+    const result = await this.db.insert(companies).values(companyData).returning();
     return result[0];
   }
 

@@ -131,7 +131,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         topDriveModel: data.topDriveModel === '' ? null : data.topDriveModel,
         tenant: req.tenant
       };
-      const rig = await storage.createRig(cleanData);
+      
+      // CRITICAL: Remove id field to let database generate UUID
+      const { id: _, ...insertData } = cleanData;
+      
+      const rig = await storage.createRig(insertData);
       res.status(201).json(rig);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -369,7 +373,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertCompanySchema.parse(req.body);
       const companyData = { ...data, tenant: req.tenant };
-      const company = await storage.createCompany(companyData);
+      
+      // CRITICAL: Remove id field to let database generate UUID
+      const { id: _, ...insertData } = companyData;
+      
+      const company = await storage.createCompany(insertData);
       res.status(201).json(company);
     } catch (error) {
       if (error instanceof z.ZodError) {
